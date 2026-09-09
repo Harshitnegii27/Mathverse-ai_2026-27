@@ -1,4 +1,6 @@
 fastapi[standard]
 pydantic
 sqlalchemy
+mediapipe
+opencv-python
 
