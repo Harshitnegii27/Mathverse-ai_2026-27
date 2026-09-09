@@ -3,4 +3,5 @@ pydantic
 sqlalchemy
 mediapipe
 opencv-python
+torch
 
