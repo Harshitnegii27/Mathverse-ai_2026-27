@@ -4,4 +4,6 @@ sqlalchemy
 mediapipe
 opencv-python
 torch
+groq
+python-dotenv
 

@@ -507,3 +507,14 @@ class EyeTrackingThread:
             self._tracker.close()
         import cv2
         cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    thread = EyeTrackingThread()
+    if thread.start():
+        try:
+            import time
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            thread.stop()
+

@@ -12,8 +12,14 @@ router = APIRouter(
 )
 
 def trigger_rag_tutor_async(mission_id: str):
-    # Placeholder for async RAG invocation
-    print(f"[AI] RAG Tutor pre-fetching context for mission {mission_id}")
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'services'))
+    try:
+        from services.rag_tutor import generate_mission_briefing
+        generate_mission_briefing(mission_id)
+    except Exception as e:
+        print(f"[AI] RAG Tutor integration failed: {e}")
 
 @router.get("/", response_model=List[schemas.Mission])
 def list_missions(db: Session = Depends(get_db)):
