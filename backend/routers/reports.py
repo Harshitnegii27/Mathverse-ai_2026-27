@@ -32,12 +32,17 @@ def get_student_report(
         raise HTTPException(status_code=404, detail="Student not found.")
         
     # Role-based Ownership & Access Control
-    if current_user:
-        if current_user.role == "student" and current_user.userId != student_id:
-            raise HTTPException(status_code=403, detail="Access denied: Students can only access their own reports.")
-        elif current_user.role in ["parent", "teacher"]:
-            if current_user.linked_student_id is not None and current_user.linked_student_id != student_id:
-                raise HTTPException(status_code=403, detail="Access denied: You are not linked to this student.")
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required to view student analytics.")
+        
+    if current_user.role == "student":
+        if current_user.userId != student_id:
+            raise HTTPException(status_code=403, detail="Access denied: Students can only view their own dashboard.")
+    elif current_user.role in ["parent", "teacher"]:
+        if not current_user.linked_student_id:
+            raise HTTPException(status_code=403, detail="No student linked to this guardian account. Please enter your student's email to link their profile.")
+        if current_user.linked_student_id != student_id:
+            raise HTTPException(status_code=403, detail="Access denied: You are not authorized to access this student's reports. You can only view your linked student.")
                 
     attempts = db.query(models.MissionAttempt).filter(models.MissionAttempt.userId == student_id).order_by(models.MissionAttempt.timestamp.desc()).all()
     
@@ -150,33 +155,40 @@ def link_student_to_guardian(
     current_user: Optional[models.User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Links a parent or teacher account to a student using student code or student ID."""
-    code_or_id = payload.student_code_or_id.strip()
+    """Links a parent or teacher account to a student using student email, code or ID."""
+    code_or_email = payload.student_code_or_id.strip()
     
     student = db.query(models.User).filter(
-        (models.User.student_code == code_or_id) |
-        (models.User.userId == int(code_or_id) if code_or_id.isdigit() else False) |
-        (models.User.name.ilike(f"%{code_or_id}%"))
+        models.User.role == "student",
+        (models.User.email == code_or_email.lower()) |
+        (models.User.student_code == code_or_email.upper()) |
+        (models.User.userId == int(code_or_email) if code_or_email.isdigit() else False)
     ).first()
     
     if not student:
-        raise HTTPException(status_code=404, detail=f"No student found matching '{code_or_id}'.")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No registered student found with email or code '{code_or_email}'. Please ensure the student has registered."
+        )
         
     guardian = current_user
     if not guardian and guardian_id:
         guardian = db.query(models.User).filter(models.User.userId == guardian_id).first()
         
-    if guardian:
-        guardian.linked_student_id = student.userId
-        db.commit()
-        db.refresh(guardian)
+    if not guardian:
+        raise HTTPException(status_code=401, detail="Authentication required to link a student.")
+        
+    guardian.linked_student_id = student.userId
+    db.commit()
+    db.refresh(guardian)
         
     return {
         "success": True,
-        "message": f"Successfully linked to student {student.name} ({student.student_code})",
+        "message": f"Successfully linked to student {student.name} ({student.email})",
         "student": {
             "userId": student.userId,
             "name": student.name,
+            "email": student.email,
             "student_code": student.student_code
         }
     }

@@ -14,6 +14,7 @@ class UserRegister(BaseModel):
     password: str
     role: str = "student"
     student_code: Optional[str] = None # For parents/teachers linking a student on sign-up
+    student_email: Optional[EmailStr] = None # Student email provided by parent/teacher
 
 class UserLogin(BaseModel):
     email: EmailStr

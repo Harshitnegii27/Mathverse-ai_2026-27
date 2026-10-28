@@ -16,10 +16,10 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<User>;
-  register: (name: string, email: string, password: string, role: string, studentCode?: string) => Promise<User>;
+  register: (name: string, email: string, password: string, role: string, studentEmail?: string) => Promise<User>;
   demoLogin: (role: 'student' | 'parent' | 'teacher') => Promise<User>;
   logout: () => void;
-  linkStudent: (studentCodeOrId: string) => Promise<void>;
+  linkStudent: (studentEmailOrCode: string) => Promise<void>;
   isAuthModalOpen: boolean;
   openAuthModal: () => void;
   closeAuthModal: () => void;
@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user;
   };
 
-  const register = async (name: string, email: string, password: string, role: string, studentCode?: string): Promise<User> => {
+  const register = async (name: string, email: string, password: string, role: string, studentEmail?: string): Promise<User> => {
     localStorage.clear();
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
@@ -83,7 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
         role,
-        student_code: studentCode || null,
+        student_email: studentEmail ? studentEmail.trim().toLowerCase() : null,
+        student_code: studentEmail ? studentEmail.trim() : null,
       }),
     });
     if (!res.ok) {
@@ -137,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.clear();
   };
 
-  const linkStudent = async (studentCodeOrId: string) => {
+  const linkStudent = async (studentEmailOrCode: string) => {
     if (!token && !user) return;
     const res = await fetch(`${API_BASE}/reports/link-student`, {
       method: 'POST',
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({ student_code_or_id: studentCodeOrId }),
+      body: JSON.stringify({ student_code_or_id: studentEmailOrCode.trim() }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -153,7 +154,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const data = await res.json();
     if (user && data.student) {
-      setUser({ ...user, linked_student_id: data.student.userId });
+      const updated = { ...user, linked_student_id: data.student.userId };
+      setUser(updated);
+      localStorage.setItem('mathverse_user', JSON.stringify(updated));
     }
   };
 

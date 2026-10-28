@@ -174,7 +174,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
   // Initialize questions cleanly: fetch initial question first so question 0 is never swapped mid-screen
   useEffect(() => {
     setLoadingQuestion(true);
-    const fallbackQueue = generateQuestions(bossId, 10).map(q => ({
+    const fallbackQueue = generateQuestions(bossId, 7).map(q => ({
       ...q,
       options: q.options.map(formatOptionText)
     }));
@@ -373,10 +373,11 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
 
     setTimeout(() => {
       if (correct) {
-        // 10 questions total = 10% damage each
-        const newHealth = Math.max(0, villainHealth - 10);
+        // 7 questions total per level (15% damage each)
+        const damage = Math.ceil(100 / (questions.length || 7));
+        const newHealth = Math.max(0, villainHealth - damage);
         setVillainHealth(newHealth);
-        if (newHealth === 0 || currentQuestion === questions.length - 1) {
+        if (newHealth === 0 || currentQuestion >= questions.length - 1) {
           setTimeout(() => {
             setPhase('victory');
           }, 1500);
@@ -387,8 +388,9 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
           }, 1000);
         }
       } else {
-        // 10% damage on wrong answer
-        const newPlayerHealth = Math.max(0, playerHealth - 10);
+        // Damage on wrong answer
+        const playerDamage = 16;
+        const newPlayerHealth = Math.max(0, playerHealth - playerDamage);
         setPlayerHealth(newPlayerHealth);
         if (newPlayerHealth === 0) {
           if (bossId === 'doc-ock') {
@@ -419,7 +421,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
   };
 
   const handleRestart = () => {
-    setQuestions(generateQuestions(bossId, 10));
+    setQuestions(generateQuestions(bossId, 7));
     setPhase('combat');
     setCurrentQuestion(0);
     setVillainHealth(100);
@@ -757,7 +759,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
                   </div>
                   
                   <div className="hidden sm:block border-l border-white/10 pl-4">
-                    <div className="text-gray-500 font-mono text-[10px] uppercase mb-1">OBJECTIVE {currentQuestion + 1} / {questions.length || 10}</div>
+                    <div className="text-gray-500 font-mono text-[10px] uppercase mb-1">OBJECTIVE {currentQuestion + 1} / {questions.length || 7}</div>
                     <div className="text-hero-400 font-mono font-bold animate-pulse text-xs">
                       {loadingQuestion ? 'CALIBRATING...' : 'AWAITING INPUT...'}
                     </div>

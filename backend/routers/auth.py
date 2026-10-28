@@ -39,20 +39,28 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
     
     if payload.role == "student":
         student_code = f"SPIDER-{random.randint(1000, 9999)}"
-    elif payload.student_code:
-        # Parent or Teacher providing child code
-        target_student = db.query(models.User).filter(
-            (models.User.student_code == payload.student_code.strip()) |
-            (models.User.userId == payload.student_code.strip())
-        ).first()
-        if target_student:
-            linked_student_id = target_student.userId
+    elif payload.role in ["parent", "teacher"]:
+        # Parent or Teacher must provide their student's email or student code
+        lookup_key = (payload.student_email or payload.student_code or "").strip().lower()
+        if not lookup_key:
+            raise HTTPException(
+                status_code=400, 
+                detail="Student email is required for Parent and Teacher registration."
+            )
             
-    # If no linked student found for parent/teacher, default link to student 1 (Peter Parker) for demo friendliness
-    if payload.role in ["parent", "teacher"] and not linked_student_id:
-        default_student = db.query(models.User).filter(models.User.role == "student").first()
-        if default_student:
-            linked_student_id = default_student.userId
+        target_student = db.query(models.User).filter(
+            models.User.role == "student",
+            (models.User.email == lookup_key) | 
+            (models.User.student_code == lookup_key.upper()) |
+            (models.User.userId == int(lookup_key) if lookup_key.isdigit() else False)
+        ).first()
+        
+        if not target_student:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No registered student found with email or code '{lookup_key}'. Please make sure the student signs up first."
+            )
+        linked_student_id = target_student.userId
 
     user = models.User(
         name=payload.name.strip(),

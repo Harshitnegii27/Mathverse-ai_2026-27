@@ -16,7 +16,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [studentCode, setStudentCode] = useState('');
+  const [studentEmail, setStudentEmail] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +26,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (mode === 'register' && (role === 'parent' || role === 'teacher') && !studentEmail.trim()) {
+      setError("Please provide your student's registered email address to link their dashboard.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -34,7 +40,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         onSuccess(u.role);
         onClose();
       } else {
-        const u = await register(name, email, password, role, studentCode);
+        const u = await register(name, email, password, role, studentEmail);
         onSuccess(u.role);
         onClose();
       }
@@ -226,16 +232,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           {mode === 'register' && (role === 'parent' || role === 'teacher') && (
             <div>
               <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-1">
-                Link Student Code (Optional)
+                Student&apos;s Registered Email Address <span className="text-red-400">*</span>
               </label>
-              <input
-                type="text"
-                placeholder="e.g. SPIDER-2026"
-                value={studentCode}
-                onChange={(e) => setStudentCode(e.target.value)}
-                className="w-full bg-ink-900 border border-white/10 rounded-xl py-2.5 px-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-hero-500 font-mono"
-              />
-              <span className="text-[10px] text-gray-400 mt-1 block">Default links to Peter Parker (Student #1) if empty.</span>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. child@mathverse.edu"
+                  value={studentEmail}
+                  onChange={(e) => setStudentEmail(e.target.value)}
+                  className="w-full bg-ink-900 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-hero-500 font-mono"
+                />
+              </div>
+              <span className="text-[10px] text-gray-400 mt-1 block">
+                Required: Enter your student&apos;s registered email. Guardians can only access their authorized student&apos;s dashboard.
+              </span>
             </div>
           )}
 

@@ -20,8 +20,21 @@ function AppContent() {
     window.scrollTo(0, 0);
   }, [currentView]);
 
-  // Enforce authentication: only signed-up/logged-in users can play missions or access dashboards
+  // Enforce authentication & role separation:
+  // Parents/Teachers ONLY see ParentDashboard, never the student gaming arenas
+  useEffect(() => {
+    if (user && (user.role === 'parent' || user.role === 'teacher')) {
+      if (currentView !== 'parent-dashboard') {
+        setCurrentView('parent-dashboard');
+      }
+    }
+  }, [user?.role, currentView]);
+
   const handleSetView = (view: string) => {
+    if (user && (user.role === 'parent' || user.role === 'teacher')) {
+      setCurrentView('parent-dashboard');
+      return;
+    }
     if ((view.startsWith('mission') || view === 'dashboard' || view === 'parent-dashboard') && !isAuthenticated) {
       openAuthModal();
       return;
@@ -51,23 +64,29 @@ function AppContent() {
         {!currentView.startsWith('mission') && <Navbar setView={handleSetView} />}
         
         <main className="flex-1">
-          {currentView === 'landing' && (
+          {user && (user.role === 'parent' || user.role === 'teacher') ? (
+            <ParentDashboard setView={handleSetView} />
+          ) : (
             <>
-              <Hero setView={handleSetView} />
-              <Missions setView={handleSetView} />
-              <HowItWorks />
-              <BossBattles setView={handleSetView} />
-              <Gamification setView={handleSetView} />
+              {currentView === 'landing' && (
+                <>
+                  <Hero setView={handleSetView} />
+                  <Missions setView={handleSetView} />
+                  <HowItWorks />
+                  <BossBattles setView={handleSetView} />
+                  <Gamification setView={handleSetView} />
+                </>
+              )}
+              {currentView === 'dashboard' && <Dashboard setView={handleSetView} />}
+              {currentView === 'parent-dashboard' && <ParentDashboard setView={handleSetView} />}
+              {currentView.startsWith('mission') && isAuthenticated && (
+                <MissionPlayer 
+                  bossId={currentView.split(':')[1] || 'goblin'} 
+                  onExit={() => setCurrentView('dashboard')} 
+                  onNextLevel={(nextBoss) => setCurrentView('mission:' + nextBoss)} 
+                />
+              )}
             </>
-          )}
-          {currentView === 'dashboard' && <Dashboard setView={handleSetView} />}
-          {currentView === 'parent-dashboard' && <ParentDashboard setView={handleSetView} />}
-          {currentView.startsWith('mission') && isAuthenticated && (
-            <MissionPlayer 
-              bossId={currentView.split(':')[1] || 'goblin'} 
-              onExit={() => setCurrentView('dashboard')} 
-              onNextLevel={(nextBoss) => setCurrentView('mission:' + nextBoss)} 
-            />
           )}
         </main>
 

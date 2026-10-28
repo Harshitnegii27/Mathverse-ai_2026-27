@@ -66,27 +66,43 @@ interface StudentReport {
 }
 
 export default function ParentDashboard({ setView }: { setView: (view: string) => void }) {
-  const { user, token, linkStudent } = useAuth();
+  const { user, token, linkStudent, logout } = useAuth();
   
-  const [childId, setChildId] = useState<number>(user?.linked_student_id || 1);
   const [report, setReport] = useState<StudentReport | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [linkCodeInput, setLinkCodeInput] = useState<string>('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [linkInput, setLinkInput] = useState<string>('');
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
+  const [isLinking, setIsLinking] = useState<boolean>(false);
+  const [showSwitchForm, setShowSwitchForm] = useState<boolean>(false);
 
   useEffect(() => {
-    fetchStudentReport(childId);
-  }, [childId]);
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    if (!user.linked_student_id) {
+      setReport(null);
+      setLoading(false);
+      return;
+    }
+    fetchStudentReport(user.linked_student_id);
+  }, [user?.linked_student_id, token]);
 
   const fetchStudentReport = (id: number) => {
     setLoading(true);
+    setErrorMsg(null);
     fetch(`http://localhost:8001/reports/student/${id}`, {
       headers: {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     })
       .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch report");
+        if (!res.ok) {
+          return res.json().then(data => {
+            throw new Error(data.detail || "Failed to load student analytics");
+          });
+        }
         return res.json();
       })
       .then(data => {
@@ -95,59 +111,26 @@ export default function ParentDashboard({ setView }: { setView: (view: string) =
       })
       .catch(err => {
         console.error("Report fetch error:", err);
-        // Fallback demo report if backend offline
-        setReport({
-          student_id: id,
-          student_name: "Peter Parker",
-          student_code: "SPIDER-2026",
-          role: "student",
-          points: 850,
-          level: 3,
-          total_missions_cleared: 4,
-          total_questions_attempted: 28,
-          accuracy_percentage: 85,
-          total_time_minutes: 42,
-          cognitive_profile: {
-            focused_rate: 71,
-            drifting_rate: 14,
-            impulsive_rate: 8,
-            overwhelmed_rate: 7,
-            avg_blink_rate: 19.4,
-            avg_gaze_stability: 92,
-            cognitive_load_index: "Optimal"
-          },
-          topic_mastery: [
-            { topic: "Algebra (Linear Equations)", mastery_percent: 92, status: "Mastered" },
-            { topic: "Geometry (Area & Perimeter)", mastery_percent: 78, status: "Proficient" },
-            { topic: "Number Patterns & Sequences", mastery_percent: 85, status: "Proficient" },
-            { topic: "Fractions & Percentages", mastery_percent: 64, status: "Developing" },
-            { topic: "Exponents & Radicals", mastery_percent: 45, status: "Needs Practice" },
-            { topic: "Ratios & Proportions", mastery_percent: 52, status: "Developing" },
-          ],
-          recent_attempts: [
-            { attemptId: 101, villain: "Venom", score: 10, timeTaken: 20, hintUsed: false, cognitiveState: "Focused", date: "Today, 11:30" },
-            { attemptId: 102, villain: "Venom", score: 0, timeTaken: 38, hintUsed: true, cognitiveState: "Drifting", date: "Today, 11:22" },
-            { attemptId: 103, villain: "Mysterio", score: 10, timeTaken: 16, hintUsed: false, cognitiveState: "Focused", date: "Yesterday, 16:45" },
-            { attemptId: 104, villain: "Doctor Octopus", score: 10, timeTaken: 32, hintUsed: true, cognitiveState: "Overwhelmed", date: "Oct 26, 14:15" },
-          ],
-          badges: ["Web Weaver", "Goblin Slayer", "Laser Focus", "Equation Master", "Geometry Defender"],
-          ai_guardian_summary: "Peter displays exceptional conceptual fluency in algebraic problem solving and number sequences, maintaining a 71% sustained visual focus rate across combat missions. While multi-step geometry tasks trigger brief cognitive fatigue (7% overwhelm), Spider-Gwen comms guidance successfully restores his focus.",
-          guardian_recommendation: "Reinforce area vs. perimeter calculation distinctions with practical 5-minute visual exercises. Maintain 12-15 minute focused mission intervals."
-        });
+        setErrorMsg(err.message || "Failed to fetch student report.");
+        setReport(null);
         setLoading(false);
       });
   };
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkCodeInput.trim()) return;
+    if (!linkInput.trim()) return;
+    setIsLinking(true);
+    setLinkMsg(null);
     try {
-      await linkStudent(linkCodeInput.trim());
-      setLinkMsg(`✓ Successfully linked to student code: ${linkCodeInput.toUpperCase()}`);
-      setLinkCodeInput('');
-      fetchStudentReport(childId);
+      await linkStudent(linkInput.trim());
+      setLinkMsg(`✓ Successfully linked to student!`);
+      setLinkInput('');
+      setShowSwitchForm(false);
     } catch (err: any) {
       setLinkMsg(`❌ ${err.message || 'Linking failed'}`);
+    } finally {
+      setIsLinking(false);
     }
   };
 
@@ -155,18 +138,97 @@ export default function ParentDashboard({ setView }: { setView: (view: string) =
     window.print();
   };
 
-  if (loading && !report) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-white font-mono">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-hero-500 border-t-transparent rounded-full animate-spin" />
-          <div className="text-sm uppercase tracking-widest text-hero-400">Loading Guardian Analytics...</div>
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <div className="text-sm uppercase tracking-widest text-blue-400">Loading Student Analytics...</div>
         </div>
       </div>
     );
   }
 
-  const r = report!;
+  // If no student is linked to this guardian account yet
+  if (!user?.linked_student_id || (!report && !loading)) {
+    return (
+      <section className="relative py-24 min-h-screen flex items-center justify-center text-white">
+        <div className="absolute inset-0 halftone opacity-30 pointer-events-none" />
+        <div className="relative max-w-lg w-full mx-auto px-6">
+          <div className="p-8 rounded-3xl bg-ink-950/95 border border-blue-500/40 backdrop-blur-xl shadow-[0_0_50px_rgba(37,99,235,0.2)] text-center">
+            <div className="w-16 h-16 rounded-2xl bg-blue-950/80 border border-blue-500/50 flex items-center justify-center mx-auto mb-5 shadow-[0_0_20px_rgba(37,99,235,0.4)]">
+              <Shield className="w-8 h-8 text-blue-400" />
+            </div>
+            
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-950/80 border border-blue-400/40 text-blue-300 text-xs font-mono font-bold uppercase tracking-wider mb-2">
+              {user?.role === 'teacher' ? 'Educator Command Deck' : 'Parent & Guardian Portal'}
+            </div>
+            
+            <h2 className="font-comic text-3xl text-white tracking-wide">
+              Connect Your Student
+            </h2>
+            <p className="mt-2 text-xs sm:text-sm text-gray-400 leading-relaxed">
+              Enter your student&apos;s registered email to link their profile and access their live ADHD cognitive attention analytics, mission history, and curriculum mastery.
+            </p>
+
+            {errorMsg && (
+              <div className="mt-4 p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-300 text-xs font-mono text-left">
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleLinkSubmit} className="mt-6 space-y-4">
+              <div className="text-left">
+                <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-1">
+                  Student&apos;s Registered Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. child@mathverse.edu"
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  className="w-full bg-ink-900 border border-white/10 rounded-xl py-3 px-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-400 font-mono"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLinking}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isLinking ? (
+                  <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4" /> Link Student Dashboard
+                  </>
+                )}
+              </button>
+
+              {linkMsg && (
+                <div className="p-3 rounded-xl text-xs font-mono bg-blue-950/80 border border-blue-500/40 text-blue-200">
+                  {linkMsg}
+                </div>
+              )}
+            </form>
+
+            <div className="mt-6 pt-5 border-t border-white/10 flex justify-between items-center text-xs text-gray-400">
+              <span>Signed in as <strong className="text-white">{user?.name}</strong></span>
+              <button
+                onClick={logout}
+                className="text-red-400 hover:text-red-300 font-semibold"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const r = report;
 
   return (
     <section className="relative py-20 min-h-screen text-white font-sans">
@@ -174,30 +236,75 @@ export default function ParentDashboard({ setView }: { setView: (view: string) =
       
       <div className="relative max-w-7xl mx-auto px-5 sm:px-8">
         
-        {/* Top Navigation & Return */}
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <button 
-            onClick={() => setView('landing')}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-ink-900 border border-white/10 hover:border-hero-500 text-sm font-semibold text-gray-300 hover:text-white transition-all"
-          >
-            <ArrowLeft className="w-4 h-4 text-hero-400" /> Back to Academy
-          </button>
+        {/* Top Navigation Bar for Guardians */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 bg-ink-950/60 p-4 rounded-2xl border border-white/10 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-blue-400 font-mono font-bold uppercase tracking-wider">
+                {user?.role === 'teacher' ? 'Educator Command Deck' : 'Parent & Guardian Portal'}
+              </div>
+              <div className="text-sm font-semibold text-white">
+                Authorized Student: <span className="text-hero-400">{r.student_name}</span> ({r.student_code})
+              </div>
+            </div>
+          </div>
 
           <div className="flex items-center gap-3">
             <button
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-ink-800 border border-white/10 hover:bg-white/10 text-sm font-semibold text-white transition-all"
+              onClick={() => setShowSwitchForm(!showSwitchForm)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-ink-900 border border-white/10 hover:border-blue-500/50 text-xs font-semibold text-gray-300 hover:text-white transition-all"
             >
-              <Printer className="w-4 h-4 text-gray-300" /> Export / Print Report
+              <UserPlus className="w-3.5 h-3.5 text-blue-400" /> Switch Student Email
             </button>
             <button
-              onClick={() => setView('dashboard')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-hero-600 hover:bg-hero-500 text-sm font-semibold text-white comic-shadow transition-all"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-ink-800 border border-white/10 hover:bg-white/10 text-xs font-semibold text-white transition-all"
             >
-              Go to Student Arena
+              <Printer className="w-3.5 h-3.5 text-gray-300" /> Print Report
+            </button>
+            <button
+              onClick={logout}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-red-950/60 border border-red-500/30 hover:bg-red-900/40 text-xs font-semibold text-red-300 hover:text-white transition-all"
+            >
+              Sign Out
             </button>
           </div>
         </div>
+
+        {/* Switch student form drawer */}
+        {showSwitchForm && (
+          <Reveal>
+            <form onSubmit={handleLinkSubmit} className="mb-6 p-4 rounded-2xl bg-ink-900/90 border border-blue-500/30 flex flex-col sm:flex-row items-center gap-3">
+              <div className="flex-1 w-full text-xs">
+                <label className="block text-gray-400 mb-1 font-mono uppercase">Enter New Student Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="student@mathverse.edu"
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-gray-500 focus:outline-none focus:border-blue-400"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLinking}
+                className="w-full sm:w-auto mt-4 sm:mt-5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all whitespace-nowrap"
+              >
+                {isLinking ? 'Verifying...' : 'Link Student'}
+              </button>
+            </form>
+          </Reveal>
+        )}
+
+        {linkMsg && (
+          <div className="mb-6 p-3 rounded-xl bg-blue-950/60 border border-blue-500/40 text-blue-300 text-xs font-mono">
+            {linkMsg}
+          </div>
+        )}
 
         {/* Guardian Header Banner */}
         <Reveal>
@@ -220,28 +327,14 @@ export default function ParentDashboard({ setView }: { setView: (view: string) =
               </div>
             </div>
 
-            {/* Link another student form */}
-            <form onSubmit={handleLinkSubmit} className="flex flex-col sm:flex-row items-center gap-2 bg-ink-900/80 p-2 rounded-2xl border border-white/10">
-              <input
-                type="text"
-                placeholder="Enter Student Code (e.g. SPIDER-2026)"
-                value={linkCodeInput}
-                onChange={(e) => setLinkCodeInput(e.target.value)}
-                className="w-full sm:w-64 bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-gray-500 focus:outline-none focus:border-blue-400"
-              />
-              <button
-                type="submit"
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all whitespace-nowrap flex items-center justify-center gap-1.5"
-              >
-                <UserPlus className="w-3.5 h-3.5" /> Link Child
-              </button>
-            </form>
-          </div>
-          {linkMsg && (
-            <div className="mb-6 p-3 rounded-xl bg-blue-950/60 border border-blue-500/40 text-blue-300 text-xs font-mono">
-              {linkMsg}
+            <div className="p-3 bg-ink-900/80 rounded-2xl border border-white/10 text-xs text-gray-400 flex items-center gap-3">
+              <Brain className="w-5 h-5 text-blue-400" />
+              <div>
+                <div className="text-white font-bold">ADHD-Calibrated Diagnostics</div>
+                <div className="text-[11px] text-gray-400">Real-time eye tracking & cognitive load metrics</div>
+              </div>
             </div>
-          )}
+          </div>
         </Reveal>
 
         {/* Executive KPI Grid */}
