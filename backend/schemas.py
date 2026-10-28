@@ -65,6 +65,11 @@ class MissionAttempt(MissionAttemptBase):
     class Config:
         from_attributes = True
 
+class MissionAttemptResponse(BaseModel):
+    attempt: MissionAttempt
+    next_question: Optional[dict] = None
+    gwen_hint: Optional[str] = None
+
 # Hint History
 class HintHistoryBase(BaseModel):
     hintText: str

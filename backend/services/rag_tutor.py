@@ -67,16 +67,22 @@ def generate_dynamic_question(villain: str, topic: str, difficulty: str) -> str:
     word problem involving the specific villain and math topic.
     """
     system_prompt = (
-        "You are an educational AI. Do NOT output any thinking process or <think> tags. "
-        "Output ONLY raw JSON format, no markdown formatting or extra text. "
-        "The JSON must have this exact structure: "
-        '{"question": "story based word problem", "options": ["A", "B", "C", "D"], '
-        '"correct_answer": "A", "explanation": "step by step solution"}'
+        "You are an expert math curriculum designer writing questions for a superhero video game. "
+        "You must output ONLY raw JSON, with no markdown formatting, no introductory text, and no conversational filler. "
+        "The output must strictly adhere to the requested JSON schema."
     )
     
     user_prompt = (
-        f"Generate a {difficulty} difficulty math word problem about {topic}. "
-        f"The story must be about Spider-Man trying to stop {villain}."
+        f"Generate a {difficulty} math word problem about {topic}. "
+        f"The story must be about Spider-Man fighting {villain}. "
+        f"CRITICAL: Keep the question very short and punchy (MAXIMUM 40 WORDS). "
+        "Provide 4 multiple choice options. Return ONLY JSON in the following format:\n"
+        "{\n"
+        '  "question": "The short story math problem here",\n'
+        '  "options": ["A) option1", "B) option2", "C) option3", "D) option4"],\n'
+        '  "correct_answer": "A",\n'
+        '  "explanation": "Brief explanation of the solution"\n'
+        "}"
     )
     
     try:

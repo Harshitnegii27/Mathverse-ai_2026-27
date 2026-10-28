@@ -9,13 +9,14 @@ router = APIRouter(
     tags=["attempts"],
 )
 
-def analyze_behavior_async(attempt_id: int):
+def analyze_behavior(attempt_id: int):
     print(f"[AI] Running LSTM temporal analysis on attempt {attempt_id}...")
     try:
         from ml.attention_model import predict_risk
         from services.rag_tutor import generate_dynamic_question, generate_gwen_hint
+        import json
         
-        # Simulated data (student took 45s, got it wrong, eye tracker shows Overwhelmed)
+        # Simulated data
         cognitive_state = "Overwhelmed"
         dummy_history = [{
             "correct": 0,
@@ -29,49 +30,79 @@ def analyze_behavior_async(attempt_id: int):
         }]
         
         probability = predict_risk(dummy_history)
-        print(f"[AI] LSTM Predicted Next-Question Success Probability: {probability:.2%}")
         
         if probability < 0.40:
-            print(f"[AI] -> High cognitive risk detected. Adjusting adaptive engine: EASIER.")
             difficulty = "easy"
         elif probability > 0.80:
-            print(f"[AI] -> Student is cruising. Adjusting adaptive engine: HARDER.")
             difficulty = "hard"
         else:
-            print(f"[AI] -> Student is challenged but capable. Adjusting adaptive engine: MAINTAIN.")
             difficulty = "medium"
             
         villain = "Green Goblin"
         topic = "solving linear equations"
 
-        print(f"\n[AI] --- GENERATING DYNAMIC CONTENT ---")
         question_json = generate_dynamic_question(villain, topic, difficulty)
-        print(f"[AI] RAG Generated Question JSON:\n{question_json}\n")
 
-        # Parse the JSON to extract the actual question string
-        import json
         try:
-            # Sometimes LLMs wrap JSON in markdown blocks
             clean_json = question_json.strip()
-            if clean_json.startswith("```json"):
-                clean_json = clean_json[7:]
-            if clean_json.endswith("```"):
-                clean_json = clean_json[:-3]
-            
+            if clean_json.startswith("```json"): clean_json = clean_json[7:]
+            if clean_json.endswith("```"): clean_json = clean_json[:-3]
             question_data = json.loads(clean_json.strip())
             actual_question_text = question_data.get("question", topic)
         except Exception as e:
-            print(f"[AI] Failed to parse generated question JSON for hint: {e}")
+            print(f"[AI] Failed to parse JSON: {e}")
+            question_data = {}
             actual_question_text = topic
 
         hint = generate_gwen_hint(villain, actual_question_text, cognitive_state)
-        print(f"[AI] Spider-Gwen Hint:\n{hint}\n")
+        return question_data, hint
             
     except Exception as e:
         print(f"[AI] LSTM or LLM inference failed: {e}")
+        return {}, "Gwen: Comms are down, trust your spider-sense!"
 
-@router.post("/", response_model=schemas.MissionAttempt)
-def submit_attempt(attempt: schemas.MissionAttemptCreate, user_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@router.get("/start/{boss_id}")
+def get_initial_question(boss_id: str):
+    """Generates the very first AI question for a mission without needing a prior attempt."""
+    from services.rag_tutor import generate_dynamic_question
+    import json
+    
+    # Map boss ID to topic
+    boss_topics = {
+        'goblin': "solving linear equations",
+        'doc-ock': "calculating area and perimeter",
+        'mysterio': "number sequences and patterns",
+        'venom': "percentages and fractions",
+        'lizard': "radicals and exponents",
+        'kingpin': "ratios and proportions"
+    }
+    boss_names = {
+        'goblin': "Green Goblin",
+        'doc-ock': "Doctor Octopus",
+        'mysterio': "Mysterio",
+        'venom': "Venom",
+        'lizard': "The Lizard",
+        'kingpin': "Kingpin"
+    }
+    
+    topic = boss_topics.get(boss_id, "basic algebra")
+    villain = boss_names.get(boss_id, "an unknown threat")
+    
+    question_json = generate_dynamic_question(villain, topic, "medium")
+    
+    try:
+        clean_json = question_json.strip()
+        if clean_json.startswith("```json"): clean_json = clean_json[7:]
+        if clean_json.endswith("```"): clean_json = clean_json[:-3]
+        question_data = json.loads(clean_json.strip())
+    except Exception as e:
+        print(f"[AI] Failed to parse JSON: {e}")
+        question_data = {}
+        
+    return {"next_question": question_data, "gwen_hint": "Let's go Spider-Man! Focus on the problem!"}
+
+@router.post("/", response_model=schemas.MissionAttemptResponse)
+def submit_attempt(attempt: schemas.MissionAttemptCreate, user_id: int, db: Session = Depends(get_db)):
     db_attempt = models.MissionAttempt(
         userId=user_id,
         score=attempt.score,
@@ -82,7 +113,10 @@ def submit_attempt(attempt: schemas.MissionAttemptCreate, user_id: int, backgrou
     db.commit()
     db.refresh(db_attempt)
     
-    # Asynchronously invoke AI/Analytics layer
-    background_tasks.add_task(analyze_behavior_async, db_attempt.attemptId)
+    question_data, gwen_hint = analyze_behavior(db_attempt.attemptId)
     
-    return db_attempt
+    return schemas.MissionAttemptResponse(
+        attempt=db_attempt,
+        next_question=question_data,
+        gwen_hint=gwen_hint
+    )

@@ -50,7 +50,30 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
 
   // Initialize questions
   useEffect(() => {
+    // Generate placeholder array of 10
     setQuestions(generateQuestions(bossId, 10));
+    
+    // Fetch the very first question from AI
+    fetch(`http://localhost:8001/attempts/start/${bossId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.next_question && data.next_question.question) {
+          const charCode = data.next_question.correct_answer ? data.next_question.correct_answer.charCodeAt(0) : 65;
+          const correctIndex = charCode - 65;
+          const newQ: Question = {
+            question: data.next_question.question,
+            options: data.next_question.options || ["A", "B", "C", "D"],
+            correct: correctIndex >= 0 && correctIndex <= 3 ? correctIndex : 0,
+            hint: data.gwen_hint || "Trust your spider-sense!"
+          };
+          setQuestions(prev => {
+            const updated = [...prev];
+            updated[0] = newQ;
+            return updated;
+          });
+        }
+      })
+      .catch(err => console.error("AI First Question Error:", err));
   }, [bossId]);
 
   // Timer logic
@@ -137,6 +160,47 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     setSelectedAnswer(index);
     const correct = index === questions[currentQuestion].correct;
     setIsCorrect(correct);
+
+    // AI BACKEND INTEGRATION: Submit attempt
+    fetch('http://localhost:8001/attempts/?user_id=1', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        score: correct ? 10 : 0,
+        timeTaken: timeSpent,
+        hintUsed: showHint
+      }),
+    })
+    .then(res => res.json())
+    .then(data => {
+      console.log("AI Backend Response:", data);
+      if (data.next_question && data.next_question.question) {
+        // Map "A" -> 0, "B" -> 1
+        const charCode = data.next_question.correct_answer ? data.next_question.correct_answer.charCodeAt(0) : 65;
+        const correctIndex = charCode - 65;
+        
+        const newQ: Question = {
+          question: data.next_question.question,
+          options: data.next_question.options || ["A", "B", "C", "D"],
+          correct: correctIndex >= 0 && correctIndex <= 3 ? correctIndex : 0,
+          hint: data.gwen_hint || "Trust your spider-sense!"
+        };
+        
+        setQuestions(prev => {
+          const updated = [...prev];
+          // Replace the *next* question in the queue with the AI generated one
+          if (currentQuestion + 1 < updated.length) {
+            updated[currentQuestion + 1] = newQ;
+          } else {
+            updated.push(newQ);
+          }
+          return updated;
+        });
+      }
+    })
+    .catch(err => console.error("AI API Error:", err));
     
     if (correct) {
       if (webShooterAudioRef.current) {
