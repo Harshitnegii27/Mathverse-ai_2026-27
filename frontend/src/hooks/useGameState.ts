@@ -27,11 +27,11 @@ export function useGameState() {
       try {
         const parsed = JSON.parse(saved);
         // Level 1 = ['goblin'] only; Level 2 = ['goblin', 'doc-ock'], etc.
-        const levelUnlocked = BOSS_KEYS.slice(0, Math.max(1, user.level || 1));
-        const combined = Array.from(new Set([...levelUnlocked, ...(parsed.unlockedBosses || ['goblin'])]));
+        const userLevel = Math.max(1, user.level || 1);
+        const levelUnlocked = BOSS_KEYS.slice(0, userLevel);
         return {
           spiderPoints: user.points !== undefined ? user.points : (parsed.spiderPoints || 0),
-          unlockedBosses: combined,
+          unlockedBosses: levelUnlocked,
           missionsCompleted: parsed.missionsCompleted || 0,
         };
       } catch (e) {
@@ -53,21 +53,20 @@ export function useGameState() {
       return;
     }
     const saved = localStorage.getItem(`mathverse_state_user_${user.userId}`);
+    const userLevel = Math.max(1, user.level || 1);
+    const levelUnlocked = BOSS_KEYS.slice(0, userLevel);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const levelUnlocked = BOSS_KEYS.slice(0, Math.max(1, user.level || 1));
-        const combined = Array.from(new Set([...levelUnlocked, ...(parsed.unlockedBosses || ['goblin'])]));
         setGameState({
           spiderPoints: user.points !== undefined ? user.points : (parsed.spiderPoints || 0),
-          unlockedBosses: combined,
+          unlockedBosses: levelUnlocked,
           missionsCompleted: parsed.missionsCompleted || 0,
         });
         return;
       } catch (e) {}
     }
     // Brand new user after signup: level 1 -> ONLY ['goblin']
-    const levelUnlocked = BOSS_KEYS.slice(0, Math.max(1, user.level || 1));
     setGameState({
       spiderPoints: user.points || 0,
       unlockedBosses: levelUnlocked,

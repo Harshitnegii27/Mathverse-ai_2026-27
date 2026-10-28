@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (name: string, email: string, password: string, role: string, studentCode?: string): Promise<User> => {
-    localStorage.removeItem('mathverse_state');
+    localStorage.clear();
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,6 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     setUser(data.user);
     setToken(data.access_token);
+    // Initialize clean state for new user
+    localStorage.setItem(`mathverse_state_user_${data.user.userId}`, JSON.stringify({
+      spiderPoints: 0,
+      unlockedBosses: ['goblin'],
+      missionsCompleted: 0
+    }));
     setIsAuthModalOpen(false);
     return data.user;
   };
@@ -128,9 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('mathverse_user');
-    localStorage.removeItem('mathverse_token');
-    localStorage.removeItem('mathverse_state');
+    localStorage.clear();
   };
 
   const linkStudent = async (studentCodeOrId: string) => {

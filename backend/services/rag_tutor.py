@@ -87,10 +87,10 @@ def generate_dynamic_question(villain: str, topic: str, difficulty: str) -> str:
         f"Underlying concept: {concept}. "
         f"Common student pitfalls to design good distractors for: {misconceptions}. "
         f"CRITICAL: Keep the question very short and punchy (MAXIMUM 40 WORDS). "
-        "Provide 4 multiple choice options. Return ONLY JSON in the following format:\n"
+        "Provide 4 multiple choice options (just the option values, no letter prefixes). Return ONLY JSON in the following format:\n"
         "{\n"
         '  "question": "The short story math problem here",\n'
-        '  "options": ["A) option1", "B) option2", "C) option3", "D) option4"],\n'
+        '  "options": ["option1", "option2", "option3", "option4"],\n'
         '  "correct_answer": "A",\n'
         '  "explanation": "Brief explanation of the solution"\n'
         "}"
@@ -116,25 +116,25 @@ def generate_dynamic_question(villain: str, topic: str, difficulty: str) -> str:
         fallback_questions = {
             "solving linear equations": {
                 "question": f"Green Goblin's glider is moving at speed: 3x + 12 = 33. What is x?",
-                "options": ["A) 7", "B) 5", "C) 9", "D) 15"],
+                "options": ["7", "5", "9", "15"],
                 "correct_answer": "A",
                 "explanation": "Subtract 12 from both sides to get 3x = 21, then divide by 3: x = 7."
             },
             "calculating area and perimeter": {
                 "question": "Doc Ock creates an energy grid measuring 8m by 6m. What is its total area?",
-                "options": ["A) 48 sq m", "B) 28 sq m", "C) 14 sq m", "D) 96 sq m"],
+                "options": ["48 sq m", "28 sq m", "14 sq m", "96 sq m"],
                 "correct_answer": "A",
                 "explanation": "Area of rectangle = length * width = 8 * 6 = 48 sq m."
             },
             "number sequences and patterns": {
                 "question": "Mysterio projects drones at times: 4, 9, 14, 19... What is the next drone time?",
-                "options": ["A) 24", "B) 23", "C) 25", "D) 29"],
+                "options": ["24", "23", "25", "29"],
                 "correct_answer": "A",
                 "explanation": "The common difference is +5. 19 + 5 = 24."
             },
             "percentages and fractions": {
                 "question": "Venom controls 40% of a 120m skyscraper. How many meters are infected?",
-                "options": ["A) 48m", "B) 40m", "C) 60m", "D) 30m"],
+                "options": ["48m", "40m", "60m", "30m"],
                 "correct_answer": "A",
                 "explanation": "40% of 120 = 0.40 * 120 = 48 meters."
             },

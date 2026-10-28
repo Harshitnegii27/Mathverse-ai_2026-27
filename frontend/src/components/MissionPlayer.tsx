@@ -11,6 +11,11 @@ interface MissionPlayerProps {
   onNextLevel?: (bossId: string) => void;
 }
 
+const formatOptionText = (opt: string) => {
+  if (!opt) return '';
+  return opt.replace(/^[A-Da-d1-4][\)\.\:\-]\s*/, '').trim();
+};
+
 export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPlayerProps) {
   const { addSpiderPoints, unlockBoss, incrementMissions } = useGameState();
   const { user } = useAuth();
@@ -19,6 +24,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
   const [phase, setPhase] = useState<'briefing' | 'combat' | 'victory' | 'defeat'>('combat');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [loadingQuestion, setLoadingQuestion] = useState<boolean>(true);
   
   const [villainHealth, setVillainHealth] = useState(100);
   const [playerHealth, setPlayerHealth] = useState(100);
@@ -37,8 +43,8 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [opticalSensorActive, setOpticalSensorActive] = useState<boolean>(false);
   const [telemetryState, setTelemetryState] = useState<string>('Focused');
-  const [predictedRisk, setPredictedRisk] = useState<number>(0.75);
-  const [eyeMetrics, setEyeMetrics] = useState({ blinkRate: 18, pupilDilation: 5, gazeStability: 94 });
+  const [predictedRisk, setPredictedRisk] = useState<number>(0.68);
+  const [eyeMetrics, setEyeMetrics] = useState({ blinkRate: 18, pupilDilation: 5, gazeStability: 92 });
 
   const webShooterAudioRef = useRef<HTMLAudioElement>(null);
   const goblinLaughAudioRef = useRef<HTMLAudioElement>(null);
@@ -58,6 +64,38 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     "YOUR MATH CAN'T SAVE YOU!", 
     "SLEEP, LITTLE SPIDER!"
   ];
+
+  const cycleTelemetryState = () => {
+    const states = ['Focused', 'Drifting', 'Impulsive', 'Overwhelmed'];
+    const nextIdx = (states.indexOf(telemetryState) + 1) % states.length;
+    const nextState = states[nextIdx];
+    
+    fetch('http://localhost:8001/eye-track/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUserId, state: nextState })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.telemetry) {
+        setTelemetryState(data.telemetry.attention_state);
+        if (data.predicted_probability !== undefined) {
+          setPredictedRisk(data.predicted_probability);
+        }
+        if (data.telemetry.metrics) {
+          const m = data.telemetry.metrics;
+          setEyeMetrics({
+            blinkRate: Math.round(m.blink_rate || 18),
+            pupilDilation: Math.round(m.pupil_dilation || 5),
+            gazeStability: Math.round((m.gaze_stability || 0.9) * 100)
+          });
+        }
+      }
+    })
+    .catch(() => {
+      setTelemetryState(nextState);
+    });
+  };
 
   // Optical Sensor Webcam Streaming
   useEffect(() => {
@@ -118,37 +156,56 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
         stream.getTracks().forEach(t => t.stop());
       }
     };
+  }, [opticalSensorActive, currentUserId]);
+
+  // Dynamic telemetry micro-fluctuations when optical sensor is active
+  useEffect(() => {
+    if (!opticalSensorActive) return;
+    const jitter = setInterval(() => {
+      setEyeMetrics(prev => ({
+        blinkRate: Math.max(12, Math.min(48, prev.blinkRate + (Math.floor(Math.random() * 3) - 1))),
+        pupilDilation: prev.pupilDilation,
+        gazeStability: Math.max(40, Math.min(98, prev.gazeStability + (Math.floor(Math.random() * 5) - 2)))
+      }));
+    }, 2000);
+    return () => clearInterval(jitter);
   }, [opticalSensorActive]);
 
-  // Initialize questions
+  // Initialize questions cleanly: fetch initial question first so question 0 is never swapped mid-screen
   useEffect(() => {
-    // Generate placeholder array of 10
-    setQuestions(generateQuestions(bossId, 10));
+    setLoadingQuestion(true);
+    const fallbackQueue = generateQuestions(bossId, 10).map(q => ({
+      ...q,
+      options: q.options.map(formatOptionText)
+    }));
     
-    // Fetch the very first question from AI
+    // Fetch initial AI question
     fetch(`http://localhost:8001/attempts/start/${bossId}?user_id=${currentUserId}`)
       .then(res => res.json())
       .then(data => {
         if (data.cognitive_state) setTelemetryState(data.cognitive_state);
-        if (data.predicted_probability) setPredictedRisk(data.predicted_probability);
+        if (data.predicted_probability !== undefined) setPredictedRisk(data.predicted_probability);
         if (data.next_question && data.next_question.question) {
           const charCode = data.next_question.correct_answer ? data.next_question.correct_answer.charCodeAt(0) : 65;
           const correctIndex = charCode - 65;
-          const newQ: Question = {
+          const cleanOptions = (data.next_question.options || ["A", "B", "C", "D"]).map(formatOptionText);
+          const aiQ: Question = {
             question: data.next_question.question,
-            options: data.next_question.options || ["A", "B", "C", "D"],
+            options: cleanOptions,
             correct: correctIndex >= 0 && correctIndex <= 3 ? correctIndex : 0,
             hint: data.gwen_hint || "Trust your spider-sense!"
           };
-          setQuestions(prev => {
-            const updated = [...prev];
-            updated[0] = newQ;
-            return updated;
-          });
+          fallbackQueue[0] = aiQ;
         }
       })
-      .catch(err => console.error("AI First Question Error:", err));
-  }, [bossId]);
+      .catch(err => {
+        console.warn("AI initial question fallback engaged:", err);
+      })
+      .finally(() => {
+        setQuestions(fallbackQueue);
+        setLoadingQuestion(false);
+      });
+  }, [bossId, currentUserId]);
 
   // Timer logic
   useEffect(() => {
@@ -217,16 +274,21 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
         }, 6000);
       }
       
-      // Save progression
-      addSpiderPoints(combo * 100 + 250);
+      // Save progression locally and on backend
+      const bonusPts = combo * 100 + 250;
+      addSpiderPoints(bonusPts);
       incrementMissions();
       if (bossId === 'goblin') unlockBoss('doc-ock');
       if (bossId === 'doc-ock') unlockBoss('mysterio');
       if (bossId === 'mysterio') unlockBoss('venom');
       if (bossId === 'venom') unlockBoss('lizard');
       if (bossId === 'lizard') unlockBoss('kingpin');
+
+      fetch(`http://localhost:8001/attempts/victory?user_id=${currentUserId}&boss_id=${bossId}&bonus_points=${bonusPts}`, {
+        method: 'POST'
+      }).catch(err => console.warn("Could not sync victory to backend:", err));
     }
-  }, [phase]);
+  }, [phase, currentUserId, bossId, combo]);
 
   const handleAnswer = (index: number) => {
     if (selectedAnswer !== null || questions.length === 0) return;
@@ -252,15 +314,16 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     .then(data => {
       console.log("AI Backend Response:", data);
       if (data.cognitive_state) setTelemetryState(data.cognitive_state);
-      if (data.predicted_probability) setPredictedRisk(data.predicted_probability);
+      if (data.predicted_probability !== undefined) setPredictedRisk(data.predicted_probability);
       if (data.next_question && data.next_question.question) {
         // Map "A" -> 0, "B" -> 1
         const charCode = data.next_question.correct_answer ? data.next_question.correct_answer.charCodeAt(0) : 65;
         const correctIndex = charCode - 65;
+        const cleanOptions = (data.next_question.options || ["A", "B", "C", "D"]).map(formatOptionText);
         
         const newQ: Question = {
           question: data.next_question.question,
-          options: data.next_question.options || ["A", "B", "C", "D"],
+          options: cleanOptions,
           correct: correctIndex >= 0 && correctIndex <= 3 ? correctIndex : 0,
           hint: data.gwen_hint || "Trust your spider-sense!"
         };
@@ -447,6 +510,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
               TRY AGAIN
             </button>
             <button 
+            
               onClick={onExit}
               className="flex-1 py-5 bg-ink-800 text-white font-comic text-xl tracking-wider rounded-xl hover:bg-ink-700 transition-all hover:scale-105 active:scale-95 border-2 border-red-600/50"
             >
@@ -634,19 +698,23 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
               {opticalSensorActive ? 'OPTICS: LIVE STREAM' : 'ENABLE EYE SENSOR'}
             </button>
 
-            {/* Cognitive State Pill */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border uppercase ${
-              telemetryState === 'Focused'
-                ? 'border-green-500/50 bg-green-950/60 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
-                : telemetryState === 'Drifting'
-                ? 'border-yellow-500/50 bg-yellow-950/60 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.3)]'
-                : telemetryState === 'Impulsive'
-                ? 'border-red-500/50 bg-red-950/60 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
-                : 'border-purple-500/50 bg-purple-950/60 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.3)]'
-            }`}>
+            {/* Cognitive State Pill (Clickable for Interactive Simulation & Testing) */}
+            <button
+              onClick={cycleTelemetryState}
+              title="Click to cycle attention state (test LSTM adaptive difficulty)"
+              className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border uppercase cursor-pointer hover:scale-105 transition-all ${
+                telemetryState === 'Focused'
+                  ? 'border-green-500/50 bg-green-950/60 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
+                  : telemetryState === 'Drifting'
+                  ? 'border-yellow-500/50 bg-yellow-950/60 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.3)]'
+                  : telemetryState === 'Impulsive'
+                  ? 'border-red-500/50 bg-red-950/60 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                  : 'border-purple-500/50 bg-purple-950/60 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.3)]'
+              }`}
+            >
               <Activity className="w-3 h-3 animate-pulse" />
               <span>COGNITION: {telemetryState}</span>
-            </div>
+            </button>
           </div>
 
           <div className="flex items-center gap-3 text-[10px] sm:text-xs font-mono text-slate-400">
@@ -689,53 +757,67 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
                   </div>
                   
                   <div className="hidden sm:block border-l border-white/10 pl-4">
-                    <div className="text-gray-500 font-mono text-[10px] uppercase mb-1">OBJECTIVE {currentQuestion + 1} / {questions.length}</div>
-                    <div className="text-hero-400 font-mono font-bold animate-pulse text-xs">AWAITING INPUT...</div>
+                    <div className="text-gray-500 font-mono text-[10px] uppercase mb-1">OBJECTIVE {currentQuestion + 1} / {questions.length || 10}</div>
+                    <div className="text-hero-400 font-mono font-bold animate-pulse text-xs">
+                      {loadingQuestion ? 'CALIBRATING...' : 'AWAITING INPUT...'}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mb-4 text-sm sm:text-base text-white font-medium leading-tight whitespace-pre-line text-shadow-sm font-mono">
-                {q.question.split('\n').map((line, i) => (
-                  <span key={i} className={line.includes('Solve:') || line.includes('Find') || line.includes('What is') ? 'text-hero-400 font-bold' : ''}>
-                    {line.includes('ALERT') || line.includes('THREAT') ? <span className="text-red-500 font-bold">{line}</span> : line}<br/>
-                  </span>
-                ))}
-              </div>
+              {loadingQuestion || !q ? (
+                <div className="py-12 text-center space-y-3 font-mono">
+                  <div className="inline-flex items-center gap-2 text-hero-400 font-bold tracking-widest text-sm animate-pulse">
+                    <Cpu className="w-5 h-5 animate-spin" /> CALIBRATING COMBAT SIMULATION...
+                  </div>
+                  <p className="text-xs text-gray-400">Spider-Gwen AI establishing tactical satellite telemetry with villain grid...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 text-sm sm:text-base text-white font-medium leading-tight whitespace-pre-line text-shadow-sm font-mono">
+                    {q.question.split('\n').map((line, i) => (
+                      <span key={i} className={line.includes('Solve:') || line.includes('Find') || line.includes('What is') ? 'text-hero-400 font-bold' : ''}>
+                        {line.includes('ALERT') || line.includes('THREAT') ? <span className="text-red-500 font-bold">{line}</span> : line}<br/>
+                      </span>
+                    ))}
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {q.options.map((opt, idx) => {
-                  let stateClasses = "bg-red-950/10 border-red-500/20 text-white hover:bg-red-900/30 hover:border-hero-500/80 hover:shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:-translate-y-1";
-                  
-                  if (selectedAnswer !== null) {
-                    if (idx === q.correct) {
-                      stateClasses = "bg-green-500/20 border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)] text-green-400 scale-[1.02] z-10";
-                    } else if (idx === selectedAnswer) {
-                      stateClasses = "bg-red-600/30 border-red-500 shadow-[0_0_30px_rgba(220,38,38,0.6)] text-red-400 scale-[0.98]";
-                    } else {
-                      stateClasses = "bg-black/50 border-white/5 text-gray-700 opacity-30";
-                    }
-                  }
-
-                  return (
-                    <button
-                      key={idx}
-                      disabled={selectedAnswer !== null || combatFeedback === 'timeout'}
-                      onClick={() => handleAnswer(idx)}
-                      className={`relative overflow-hidden p-3 rounded-xl border-2 text-left font-comic text-lg sm:text-xl transition-all duration-300 group ${stateClasses}`}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-hero-500/0 via-hero-500/10 to-hero-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                  <div className="grid grid-cols-2 gap-3">
+                    {q.options.map((opt, idx) => {
+                      const cleanOpt = formatOptionText(opt);
+                      let stateClasses = "bg-red-950/10 border-red-500/20 text-white hover:bg-red-900/30 hover:border-hero-500/80 hover:shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:-translate-y-1";
                       
-                      <div className="relative z-10 flex items-center">
-                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-black/40 border border-white/10 text-hero-400 text-xs mr-3 font-mono shadow-inner shrink-0">
-                          {String.fromCharCode(65 + idx)}
-                        </span>
-                        {opt}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                      if (selectedAnswer !== null) {
+                        if (idx === q.correct) {
+                          stateClasses = "bg-green-500/20 border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)] text-green-400 scale-[1.02] z-10";
+                        } else if (idx === selectedAnswer) {
+                          stateClasses = "bg-red-600/30 border-red-500 shadow-[0_0_30px_rgba(220,38,38,0.6)] text-red-400 scale-[0.98]";
+                        } else {
+                          stateClasses = "bg-black/50 border-white/5 text-gray-700 opacity-30";
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={idx}
+                          disabled={selectedAnswer !== null || combatFeedback === 'timeout'}
+                          onClick={() => handleAnswer(idx)}
+                          className={`relative overflow-hidden p-3 rounded-xl border-2 text-left font-comic text-lg sm:text-xl transition-all duration-300 group ${stateClasses}`}
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-hero-500/0 via-hero-500/10 to-hero-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                          
+                          <div className="relative z-10 flex items-center">
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-black/40 border border-white/10 text-hero-400 text-xs mr-3 font-mono shadow-inner shrink-0">
+                              {String.fromCharCode(65 + idx)}
+                            </span>
+                            {cleanOpt}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

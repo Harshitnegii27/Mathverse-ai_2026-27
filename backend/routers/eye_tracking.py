@@ -176,9 +176,12 @@ def simulate_state(payload: SimulatePayload):
     """Allows manual simulation of cognitive states (for testing and demoing adaptive Gwen hints)."""
     session = get_or_create_session(payload.user_id)
     session.set_simulated_state(payload.state, payload.blink_rate, payload.pupil_dilation)
+    from ml.attention_model import predict_risk
+    prob = predict_risk(session.history)
     return {
         "success": True,
         "message": f"User {payload.user_id} cognitive state set to {payload.state}",
-        "telemetry": session.latest_result
+        "telemetry": session.latest_result,
+        "predicted_probability": round(float(prob), 3)
     }
 

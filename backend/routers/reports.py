@@ -43,12 +43,12 @@ def get_student_report(
     
     total_attempts = len(attempts)
     total_correct = sum(1 for a in attempts if a.score > 0)
-    accuracy_pct = int((total_correct / total_attempts * 100)) if total_attempts > 0 else 84
+    accuracy_pct = int((total_correct / total_attempts * 100)) if total_attempts > 0 else 0
     total_time_seconds = sum(a.timeTaken for a in attempts)
-    total_time_minutes = max(18, int(total_time_seconds / 60)) if total_attempts > 0 else 42
+    total_time_minutes = int(total_time_seconds / 60) if total_attempts > 0 else 0
     
     villains_cleared = set(a.villain for a in attempts if a.score > 0)
-    total_missions_cleared = max(student.level, len(villains_cleared))
+    total_missions_cleared = len(attempts)
     
     # Cognitive Attention Analytics
     states = [a.cognitiveState for a in attempts if a.cognitiveState]
@@ -59,18 +59,18 @@ def get_student_report(
         impulsive_rate = int(states.count("Impulsive") / total_st * 100)
         overwhelmed_rate = int(states.count("Overwhelmed") / total_st * 100)
     else:
-        focused_rate = 74
-        drifting_rate = 14
-        impulsive_rate = 7
-        overwhelmed_rate = 5
+        focused_rate = 0
+        drifting_rate = 0
+        impulsive_rate = 0
+        overwhelmed_rate = 0
         
     cog_profile = schemas.CognitiveProfile(
         focused_rate=focused_rate,
         drifting_rate=drifting_rate,
         impulsive_rate=impulsive_rate,
         overwhelmed_rate=overwhelmed_rate,
-        avg_blink_rate=19.4,
-        avg_gaze_stability=92,
+        avg_blink_rate=18.0 if total_attempts > 0 else 0.0,
+        avg_gaze_stability=90 if total_attempts > 0 else 0,
         cognitive_load_index="Optimal" if overwhelmed_rate < 15 else "Elevated"
     )
     
@@ -80,13 +80,15 @@ def get_student_report(
     
     topic_items = []
     for t_def in DEFAULT_TOPICS:
-        pct = mastery_map.get(t_def["topic"].lower(), t_def["default_pct"])
+        pct = mastery_map.get(t_def["topic"].lower(), 0)
         if pct >= 85:
             status_str = "Mastered"
         elif pct >= 65:
             status_str = "Proficient"
-        else:
+        elif pct > 0:
             status_str = "Needs Practice"
+        else:
+            status_str = "Not Started"
         topic_items.append(schemas.TopicMasteryItem(
             topic=t_def["name"],
             mastery_percent=pct,

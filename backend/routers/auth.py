@@ -59,7 +59,7 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
         email=payload.email.lower().strip(),
         password_hash=hash_password(payload.password),
         role=payload.role.lower().strip(),
-        points=100 if payload.role == "student" else 0,
+        points=0,
         level=1,
         student_code=student_code,
         linked_student_id=linked_student_id
