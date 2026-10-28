@@ -56,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const login = async (email: string, password: string): Promise<User> => {
+    localStorage.removeItem('mathverse_state');
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (name: string, email: string, password: string, role: string, studentCode?: string): Promise<User> => {
+    localStorage.removeItem('mathverse_state');
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -128,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     localStorage.removeItem('mathverse_user');
     localStorage.removeItem('mathverse_token');
+    localStorage.removeItem('mathverse_state');
   };
 
   const linkStudent = async (studentCodeOrId: string) => {

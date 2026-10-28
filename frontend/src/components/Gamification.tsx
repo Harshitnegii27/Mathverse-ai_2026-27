@@ -1,6 +1,7 @@
 import { Flame, Award, Users2, Timer } from 'lucide-react';
 import Reveal from '@/components/Reveal';
 import { useGameState } from '@/hooks/useGameState';
+import { useAuth } from '@/context/AuthContext';
 
 const features = [
   {
@@ -36,15 +37,28 @@ const bossDetails: Record<string, { title: string, desc: string, name: string }>
 
 export default function Gamification({ setView }: { setView?: (view: string) => void }) {
   const { gameState } = useGameState();
+  const { user, isAuthenticated, openAuthModal } = useAuth();
   
-  // Calculate power tiers based on max ~3000 SP for 6 battles
-  const currentPoints = gameState.spiderPoints;
+  // Dynamic user points
+  const currentPoints = user?.points !== undefined ? user.points : gameState.spiderPoints;
   const tiers = [1000, 2500, 4000, 5500, 7000, 8500];
-  const nextTarget = tiers.find(t => t > currentPoints) || currentPoints + 1500;
+  const nextTarget = tiers.find(t => t > currentPoints) || (currentPoints + 1000);
   const progressPercent = Math.min(100, Math.max(0, (currentPoints / nextTarget) * 100));
 
+  // Dynamic active boss (first boss 'goblin' for a newly signed up user)
   const currentBossId = gameState.unlockedBosses[gameState.unlockedBosses.length - 1] || 'goblin';
-  const currentBoss = bossDetails[currentBossId];
+  const currentBoss = bossDetails[currentBossId] || bossDetails['goblin'];
+
+  const heroDisplayName = user?.name || 'Spider-Man';
+  const heroRoleSubtitle = user ? `Level ${user.level || 1} • Cadet Web-Slinger` : 'Sign up to unlock Hero Abilities';
+
+  const handleStartMission = () => {
+    if (!isAuthenticated) {
+      openAuthModal();
+      return;
+    }
+    if (setView) setView(`mission:${currentBossId}`);
+  };
 
   return (
     <section id="rewards" className="relative py-24 overflow-hidden">
@@ -76,7 +90,7 @@ export default function Gamification({ setView }: { setView?: (view: string) => 
             </div>
           </Reveal>
 
-          {/* Right: mock game UI card */}
+          {/* Right: game UI card */}
           <Reveal delay={200} className="relative">
             <div className="absolute -inset-4 bg-hero-600/10 rounded-3xl blur-2xl animate-glow-pulse" />
             <div className="relative bg-ink-800 rounded-3xl border border-white/10 comic-shadow-red p-6">
@@ -84,20 +98,21 @@ export default function Gamification({ setView }: { setView?: (view: string) => 
                 <div className="flex items-center gap-3">
                   <span className="grid place-items-center w-12 h-12 rounded-xl bg-hero-600 text-white text-2xl">🕷️</span>
                   <div>
-                    <div className="font-comic text-xl text-white">Spider-Man</div>
-                    <div className="text-xs text-gray-400">Power Upgrade · Enhanced Agility</div>
+                    <div className="font-comic text-xl text-white">{heroDisplayName}</div>
+                    <div className="text-xs text-gray-400">{heroRoleSubtitle}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-hero-400 font-bold">
                   <Flame className="w-5 h-5" fill="currentColor" />
-                  <span className="text-lg">12</span>
+                  <span className="text-lg">{gameState.missionsCompleted > 0 ? (gameState.missionsCompleted * 2) : 0}</span>
                 </div>
               </div>
 
               {/* XP progress */}
               <div className="mb-5">
                 <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                  <span>Spider Points to Next Power</span><span className="text-hero-400">{currentPoints.toLocaleString()} / {nextTarget.toLocaleString()}</span>
+                  <span>Spider Points to Next Power</span>
+                  <span className="text-hero-400">{currentPoints.toLocaleString()} / {nextTarget.toLocaleString()}</span>
                 </div>
                 <div className="h-3 rounded-full bg-ink-700 overflow-hidden">
                   <div className="h-full rounded-full bg-gradient-to-r from-hero-600 to-hero-400 transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }} />
@@ -133,17 +148,14 @@ export default function Gamification({ setView }: { setView?: (view: string) => 
                       <span className="text-[10px] text-gray-400 font-mono">Missions: {gameState.missionsCompleted}</span>
                     </div>
                     <p className="text-white font-medium text-sm leading-snug">
-                      "{currentBoss.desc}"
+                      &quot;{currentBoss.desc}&quot;
                     </p>
                     <div className="mt-3 flex items-center gap-2">
                       <button 
-                        onClick={() => {
-                          const currentBossId = gameState.unlockedBosses[gameState.unlockedBosses.length - 1] || 'goblin';
-                          if (setView) setView(`mission:${currentBossId}`);
-                        }}
-                        className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-500 active:scale-95 transition-all"
+                        onClick={handleStartMission}
+                        className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-500 active:scale-95 transition-all shadow-md"
                       >
-                        Accept Mission →
+                        {isAuthenticated ? 'Accept Mission →' : 'Sign Up to Accept Mission →'}
                       </button>
                     </div>
                   </div>
@@ -156,10 +168,14 @@ export default function Gamification({ setView }: { setView?: (view: string) => 
                   <img src="/gwen.jpeg" alt="Gwen Stacy" className="w-10 h-10 rounded-full object-cover border-2 border-pink-500" />
                   <div className="flex-1 flex justify-between items-center">
                     <div>
-                      <div className="text-white font-medium text-sm">Gwen's Research Lab</div>
-                      <span className="text-[10px] font-semibold text-pink-400 uppercase">ANALYZING {currentBoss.name}'S WEAKNESSES</span>
+                      <div className="text-white font-medium text-sm">Gwen&apos;s Research Lab</div>
+                      <span className="text-[10px] font-semibold text-pink-400 uppercase">ANALYZING {currentBoss.name.toUpperCase()}&apos;S WEAKNESSES</span>
                     </div>
-                    <button className="px-3 py-1.5 rounded-lg bg-ink-700 hover:bg-pink-600 hover:text-white text-gray-300 text-xs font-semibold transition-all" title="Gwen's Research Lab has discovered a weakness. Solve these problems to understand the pattern.">
+                    <button 
+                      onClick={handleStartMission}
+                      className="px-3 py-1.5 rounded-lg bg-ink-700 hover:bg-pink-600 hover:text-white text-gray-300 text-xs font-semibold transition-all" 
+                      title="Gwen's Research Lab has discovered a weakness. Solve these problems to understand the pattern."
+                    >
                       Ask for Hint
                     </button>
                   </div>

@@ -1,6 +1,7 @@
 import { Target, Shield, Zap, Beaker } from 'lucide-react';
 import Reveal from '@/components/Reveal';
 import { useGameState } from '@/hooks/useGameState';
+import { useAuth } from '@/context/AuthContext';
 
 const missionsData = [
   {
@@ -73,11 +74,24 @@ const missionsData = [
 
 export default function Missions({ setView }: { setView: (v: string) => void }) {
   const { gameState } = useGameState();
+  const { isAuthenticated, openAuthModal } = useAuth();
 
   const missions = missionsData.map(m => ({
     ...m,
     locked: !gameState.unlockedBosses.includes(m.id)
   }));
+
+  const handleStartMission = (m: typeof missions[0]) => {
+    if (!isAuthenticated) {
+      openAuthModal();
+      return;
+    }
+    if (!m.locked) {
+      setView(`mission:${m.id}`);
+    } else {
+      alert('Defeat previous bosses to unlock!');
+    }
+  };
 
   return (
     <section id="missions" className="relative py-24 overflow-hidden">
@@ -119,10 +133,10 @@ export default function Missions({ setView }: { setView: (v: string) => void }) 
               </div>
 
               <button 
-                onClick={() => !m.locked ? setView(`mission:${m.id}`) : alert('Defeat previous bosses to unlock!')}
+                onClick={() => handleStartMission(m)}
                 className="mt-5 w-full py-2.5 rounded-lg bg-ink-900/60 text-white text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity border border-white/10 hover:border-hero-600/50 active:scale-95"
               >
-                {m.locked ? 'Locked' : 'Start Mission →'}
+                {!isAuthenticated ? 'Sign Up to Play' : (m.locked ? 'Locked' : 'Start Mission →')}
               </button>
             </Reveal>
           ))}

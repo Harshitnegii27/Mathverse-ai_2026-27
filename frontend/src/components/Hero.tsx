@@ -1,14 +1,26 @@
 import { ArrowRight, Play, Sparkles } from 'lucide-react';
 import { useGameState } from '@/hooks/useGameState';
+import { useAuth } from '@/context/AuthContext';
 
 const SPIDEY_GIF = '/spiderman-gif.gif';
 
 export default function Hero({ setView }: { setView: (view: string) => void }) {
   const { gameState } = useGameState();
-  const currentPoints = gameState.spiderPoints;
+  const { user, isAuthenticated, openAuthModal } = useAuth();
+  
+  const currentPoints = user?.points !== undefined ? user.points : gameState.spiderPoints;
   const tiers = [1000, 2500, 4000, 5500, 7000, 8500];
-  const nextTarget = tiers.find(t => t > currentPoints) || currentPoints + 1500;
+  const nextTarget = tiers.find(t => t > currentPoints) || (currentPoints + 1000);
   const progressPercent = Math.min(100, Math.max(0, (currentPoints / nextTarget) * 100));
+
+  const handleBeginMission = () => {
+    if (!isAuthenticated) {
+      openAuthModal();
+      return;
+    }
+    const currentBossId = gameState.unlockedBosses[0] || 'goblin';
+    setView(`mission:${currentBossId}`);
+  };
 
   return (
     <section id="hero" className="relative min-h-screen flex items-center justify-center pt-24 pb-12 overflow-hidden">
@@ -39,10 +51,10 @@ export default function Hero({ setView }: { setView: (view: string) => void }) {
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <button
-              onClick={() => setView('mission')}
+              onClick={handleBeginMission}
               className="group inline-flex items-center gap-2 px-7 py-3.5 bg-hero-600 hover:bg-hero-500 text-white font-bold rounded-xl comic-shadow transition-all hover:scale-105 active:scale-95"
             >
-              Begin Your Mission
+              {isAuthenticated ? 'Begin Your Mission' : 'Sign Up to Begin Mission'}
               <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
             </button>
             <a
@@ -96,11 +108,6 @@ export default function Hero({ setView }: { setView: (view: string) => void }) {
                   <div className="h-full rounded-full bg-gradient-to-r from-hero-600 to-hero-400 transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }} />
                 </div>
               </div>
-            </div>
-
-            {/* Floating badge */}
-            <div className="absolute -bottom-5 -right-3 bg-hero-600 text-white font-comic text-2xl px-5 py-3 rounded-xl rotate-[6deg] comic-shadow animate-float hover:animate-wiggle cursor-default">
-              +150 SP!
             </div>
           </div>
         </div>

@@ -14,11 +14,27 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<string>('landing');
-  const { isAuthModalOpen, closeAuthModal } = useAuth();
+  const { user, isAuthenticated, isAuthModalOpen, closeAuthModal, openAuthModal } = useAuth();
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentView]);
+
+  // Enforce authentication: only signed-up/logged-in users can play missions or access dashboards
+  const handleSetView = (view: string) => {
+    if ((view.startsWith('mission') || view === 'dashboard' || view === 'parent-dashboard') && !isAuthenticated) {
+      openAuthModal();
+      return;
+    }
+    setCurrentView(view);
+  };
+
+  useEffect(() => {
+    if ((currentView.startsWith('mission') || currentView === 'dashboard' || currentView === 'parent-dashboard') && !isAuthenticated) {
+      setCurrentView('landing');
+      openAuthModal();
+    }
+  }, [currentView, isAuthenticated]);
 
   const handleAuthSuccess = (role: 'student' | 'parent' | 'teacher') => {
     if (role === 'parent' || role === 'teacher') {
@@ -32,21 +48,21 @@ function AppContent() {
     <div className="min-h-screen spider-bg text-white relative">
       <div className="fixed inset-0 spider-halftone pointer-events-none z-0 opacity-70" />
       <div className="relative z-10 flex flex-col min-h-screen">
-        {!currentView.startsWith('mission') && <Navbar setView={setCurrentView} />}
+        {!currentView.startsWith('mission') && <Navbar setView={handleSetView} />}
         
         <main className="flex-1">
           {currentView === 'landing' && (
             <>
-              <Hero setView={setCurrentView} />
-              <Missions setView={setCurrentView} />
+              <Hero setView={handleSetView} />
+              <Missions setView={handleSetView} />
               <HowItWorks />
-              <BossBattles setView={setCurrentView} />
-              <Gamification setView={setCurrentView} />
+              <BossBattles setView={handleSetView} />
+              <Gamification setView={handleSetView} />
             </>
           )}
-          {currentView === 'dashboard' && <Dashboard setView={setCurrentView} />}
-          {currentView === 'parent-dashboard' && <ParentDashboard setView={setCurrentView} />}
-          {currentView.startsWith('mission') && (
+          {currentView === 'dashboard' && <Dashboard setView={handleSetView} />}
+          {currentView === 'parent-dashboard' && <ParentDashboard setView={handleSetView} />}
+          {currentView.startsWith('mission') && isAuthenticated && (
             <MissionPlayer 
               bossId={currentView.split(':')[1] || 'goblin'} 
               onExit={() => setCurrentView('dashboard')} 

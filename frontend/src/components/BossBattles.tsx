@@ -1,6 +1,7 @@
 import { Zap, Lock, Skull } from 'lucide-react';
 import Reveal from '@/components/Reveal';
 import { useGameState } from '@/hooks/useGameState';
+import { useAuth } from '@/context/AuthContext';
 
 const bossesData = [
   {
@@ -90,23 +91,36 @@ const bossesData = [
 
 export default function BossBattles({ setView }: { setView: (v: string) => void }) {
   const { gameState } = useGameState();
+  const { isAuthenticated, openAuthModal } = useAuth();
 
   const bosses = bossesData.map(boss => ({
     ...boss,
     locked: !gameState.unlockedBosses.includes(boss.id),
   }));
 
+  const handleBossClick = (boss: typeof bosses[0]) => {
+    if (!isAuthenticated) {
+      openAuthModal();
+      return;
+    }
+    if (!boss.locked) {
+      setView(`mission:${boss.id}`);
+    } else {
+      alert('Defeat previous bosses to unlock!');
+    }
+  };
+
   return (
     <section id="bosses" className="relative py-24 overflow-hidden">
-      <div className="absolute inset-0 halftone-red opacity-40" />
+      <div className="absolute inset-0 halftone opacity-30" />
       <div className="relative max-w-7xl mx-auto px-5 sm:px-8">
         <Reveal className="text-center max-w-2xl mx-auto mb-14">
-          <span className="text-hero-500 font-comic text-xl tracking-wide">Threats to New York</span>
-          <h2 className="mt-2 font-comic text-4xl sm:text-5xl text-white tracking-wide">
-            Epic Villain Encounters
+          <span className="text-hero-500 font-comic text-xl tracking-wide">Epic Encounters</span>
+          <h2 className="mt-2 font-comic text-4xl sm:text-5xl text-white tracking-wide leading-tight">
+            The Sinister Syndicate
           </h2>
-          <p className="mt-4 text-gray-400">
-            Defeat the Sinister Six by mastering new mathematical concepts. Each villain has unique weaknesses you must exploit!
+          <p className="mt-4 text-gray-400 max-w-lg mx-auto">
+            Six villains have taken over New York. Defeat each boss by calculating weaknesses and solving problems.
           </p>
         </Reveal>
 
@@ -118,7 +132,7 @@ export default function BossBattles({ setView }: { setView: (v: string) => void 
               {/* Click Overlay */}
               <div 
                 className="absolute inset-0 z-30" 
-                onClick={() => !boss.locked ? setView(`mission:${boss.id}`) : alert('Defeat previous bosses to unlock!')} 
+                onClick={() => handleBossClick(boss)} 
               />
               {/* Glow */}
               <div className={`absolute -inset-0.5 ${boss.glow} blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
