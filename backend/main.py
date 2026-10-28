@@ -1,7 +1,11 @@
+import os
+os.environ.setdefault("KERAS_HOME", os.path.join(os.path.dirname(__file__), ".keras"))
+os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.path.dirname(__file__), ".matplotlib"))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import users, missions, attempts
+from routers import users, missions, attempts, eye_tracking, auth, reports
 import models
 
 # Initialize the database tables
@@ -22,9 +26,12 @@ app.add_middleware(
 )
 
 # Include Routers
+app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(missions.router)
 app.include_router(attempts.router)
+app.include_router(eye_tracking.router)
+app.include_router(reports.router)
 
 @app.get("/")
 def read_root():

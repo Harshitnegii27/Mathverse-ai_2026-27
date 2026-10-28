@@ -1,7 +1,13 @@
+import os
+from pathlib import Path
+from typing import List, Dict
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import List, Dict
+
+# Ensure writable directories for caches if needed
+os.environ.setdefault("KERAS_HOME", os.path.join(os.path.dirname(__file__), "..", ".keras"))
+os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.path.dirname(__file__), "..", ".matplotlib"))
 
 class AdaptiveDifficultyLSTM(nn.Module):
     """
@@ -23,10 +29,24 @@ class AdaptiveDifficultyLSTM(nn.Module):
         out = self.fc(last_out)
         return self.sigmoid(out)
 
+WEIGHTS_FILE = Path(__file__).parent / "lstm_weights.pt"
+
+def load_or_initialize_model() -> AdaptiveDifficultyLSTM:
+    lstm_model = AdaptiveDifficultyLSTM()
+    if WEIGHTS_FILE.exists():
+        try:
+            state_dict = torch.load(str(WEIGHTS_FILE), map_location=torch.device('cpu'), weights_only=True)
+            lstm_model.load_state_dict(state_dict)
+            print(f"[AttentionModel] Loaded pre-trained LSTM weights from {WEIGHTS_FILE.name}")
+        except Exception as e:
+            print(f"[AttentionModel] Failed to load weights ({e}). Running uninitialized baseline.")
+    else:
+        print(f"[AttentionModel] No weights found at {WEIGHTS_FILE}. Running baseline.")
+    lstm_model.eval()
+    return lstm_model
+
 # Singleton instance of the model
-# In a real app, you would load pre-trained weights here (e.g., model.load_state_dict(...))
-model = AdaptiveDifficultyLSTM()
-model.eval()
+model = load_or_initialize_model()
 
 # One-hot encoding map for cognitive states
 STATE_MAP = {
@@ -78,4 +98,6 @@ def predict_risk(user_history: List[Dict]) -> float:
     with torch.no_grad():
         x = preprocess_history(user_history)
         prediction = model(x)
-        return prediction.item()
+        prob = float(prediction.item())
+        print(f"[AttentionModel] Sequence length: {len(user_history)} -> Predicted Success Prob: {prob:.2%}")
+        return prob

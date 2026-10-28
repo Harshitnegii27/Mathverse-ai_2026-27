@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, Bell } from 'lucide-react';
+import { Menu, X, Bell, User as UserIcon, Shield, LogOut } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const links = [
   { label: 'Spider Academy', href: '#hero' },
@@ -9,6 +10,7 @@ const links = [
 ];
 
 export default function Navbar({ setView }: { setView: (view: string) => void }) {
+  const { user, logout, openAuthModal } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -19,6 +21,18 @@ export default function Navbar({ setView }: { setView: (view: string) => void })
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  const handlePortalClick = () => {
+    if (!user) {
+      openAuthModal();
+      return;
+    }
+    if (user.role === 'parent' || user.role === 'teacher') {
+      setView('parent-dashboard');
+    } else {
+      setView('dashboard');
+    }
+  };
+
   return (
     <header
       className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
@@ -27,7 +41,6 @@ export default function Navbar({ setView }: { setView: (view: string) => void })
     >
       <nav className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
         <button onClick={() => setView('landing')} className="flex items-center gap-2 group">
-
           <span className="font-comic text-2xl tracking-wide text-white">
             Math<span className="text-hero-500">Verse</span>
           </span>
@@ -51,7 +64,7 @@ export default function Navbar({ setView }: { setView: (view: string) => void })
           ))}
         </ul>
 
-        <div className="hidden md:flex items-center gap-6">
+        <div className="hidden md:flex items-center gap-4">
           <div className="relative">
             <button 
               onClick={() => setShowNotifications(!showNotifications)}
@@ -72,7 +85,6 @@ export default function Navbar({ setView }: { setView: (view: string) => void })
                   <span className="text-xs bg-hero-600 text-white px-2 py-0.5 rounded-full">2 New</span>
                 </div>
                 <div className="divide-y divide-white/5 max-h-80 overflow-y-auto">
-                  
                   <div className="p-3 hover:bg-white/5 transition-colors cursor-pointer flex gap-3">
                     <img src="/j-jonah-jameson.png" alt="JJJ" className="w-10 h-10 rounded-full object-cover border border-red-500/50 shrink-0" />
                     <div>
@@ -94,25 +106,63 @@ export default function Navbar({ setView }: { setView: (view: string) => void })
                       <p className="text-xs text-gray-300 line-clamp-2">"Hey! Need a hint on that last geometry puzzle? I'm ready when you are."</p>
                     </div>
                   </div>
-
                 </div>
               </div>
             )}
           </div>
           
-          <button
-            onClick={() => setView('dashboard')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-ink-800 border border-hero-500/30 hover:bg-hero-600 hover:border-hero-500 text-white font-semibold rounded-lg transition-all hover:scale-105 active:scale-95"
-          >
-            Portal
-          </button>
-          
-          <a
-            href="#login"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-hero-600 hover:bg-hero-500 text-white font-semibold rounded-lg comic-shadow transition-all hover:scale-105 active:scale-95"
-          >
-            Login
-          </a>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handlePortalClick}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 border rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:scale-105 ${
+                  user.role === 'parent' || user.role === 'teacher'
+                    ? 'bg-blue-950/80 border-blue-500/50 text-blue-300 hover:bg-blue-600 hover:text-white'
+                    : 'bg-ink-800 border-hero-500/30 text-white hover:bg-hero-600'
+                }`}
+              >
+                {user.role === 'parent' || user.role === 'teacher' ? (
+                  <>
+                    <Shield className="w-3.5 h-3.5 text-blue-400" /> Parent Portal
+                  </>
+                ) : (
+                  <>
+                    <UserIcon className="w-3.5 h-3.5 text-hero-400" /> Hero Portal
+                  </>
+                )}
+              </button>
+
+              <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+                <span className="text-xs font-semibold text-gray-300">{user.name.split(' ')[0]}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold uppercase bg-white/10 text-gray-400">
+                  {user.role}
+                </span>
+                <button
+                  onClick={logout}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-white/5 transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handlePortalClick}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-ink-800 border border-hero-500/30 hover:bg-hero-600 hover:border-hero-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all hover:scale-105"
+              >
+                Portal
+              </button>
+              
+              <button
+                onClick={openAuthModal}
+                className="inline-flex items-center gap-2 px-5 py-2 bg-hero-600 hover:bg-hero-500 text-white font-semibold text-sm rounded-lg comic-shadow transition-all hover:scale-105 active:scale-95"
+              >
+                Sign In
+              </button>
+            </div>
+          )}
         </div>
 
         <button
@@ -141,20 +191,34 @@ export default function Navbar({ setView }: { setView: (view: string) => void })
           ))}
           <button
             onClick={() => {
-              setView('dashboard');
+              handlePortalClick();
               setOpen(false);
             }}
             className="block w-full text-center px-5 py-2.5 bg-ink-700 border border-hero-500/30 text-white font-semibold rounded-lg mt-2"
           >
-            Portal
+            {user ? (user.role === 'parent' || user.role === 'teacher' ? 'Parent Portal' : 'Hero Portal') : 'Portal'}
           </button>
-          <a
-            href="#login"
-            onClick={() => setOpen(false)}
-            className="block text-center px-5 py-2.5 bg-hero-600 text-white font-semibold rounded-lg"
-          >
-            Login
-          </a>
+          {!user ? (
+            <button
+              onClick={() => {
+                openAuthModal();
+                setOpen(false);
+              }}
+              className="block w-full text-center px-5 py-2.5 bg-hero-600 text-white font-semibold rounded-lg"
+            >
+              Sign In
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                logout();
+                setOpen(false);
+              }}
+              className="block w-full text-center px-5 py-2 bg-red-900/50 text-red-200 font-semibold rounded-lg text-xs"
+            >
+              Sign Out ({user.name})
+            </button>
+          )}
         </div>
       )}
     </header>

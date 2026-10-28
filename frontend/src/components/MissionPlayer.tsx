@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Zap, CheckCircle2, ShieldAlert, Cpu, AlertTriangle, Clock } from 'lucide-react';
+import { Zap, CheckCircle2, ShieldAlert, Cpu, AlertTriangle, Clock, Camera, Eye, EyeOff, Activity } from 'lucide-react';
 import Reveal from '@/components/Reveal';
 import { generateQuestions, Question } from '@/lib/QuestionGenerator';
 import { useGameState } from '@/hooks/useGameState';
@@ -29,6 +29,14 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
   
   const [timeSpent, setTimeSpent] = useState(0);
 
+  // Live Optical Sensor & Cognitive Telemetry State
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [opticalSensorActive, setOpticalSensorActive] = useState<boolean>(false);
+  const [telemetryState, setTelemetryState] = useState<string>('Focused');
+  const [predictedRisk, setPredictedRisk] = useState<number>(0.75);
+  const [eyeMetrics, setEyeMetrics] = useState({ blinkRate: 18, pupilDilation: 5, gazeStability: 94 });
+
   const webShooterAudioRef = useRef<HTMLAudioElement>(null);
   const goblinLaughAudioRef = useRef<HTMLAudioElement>(null);
   const drottoAudioRef = useRef<HTMLAudioElement>(null);
@@ -48,6 +56,62 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     "SLEEP, LITTLE SPIDER!"
   ];
 
+  // Optical Sensor Webcam Streaming
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let intervalId: any = null;
+
+    if (opticalSensorActive) {
+      navigator.mediaDevices?.getUserMedia({ video: { width: 320, height: 240 } })
+        .then(s => {
+          stream = s;
+          if (videoRef.current) {
+            videoRef.current.srcObject = s;
+            videoRef.current.play().catch(console.error);
+          }
+          intervalId = setInterval(() => {
+            if (!videoRef.current || !canvasRef.current) return;
+            const ctx = canvasRef.current.getContext('2d');
+            if (!ctx) return;
+            ctx.drawImage(videoRef.current, 0, 0, 160, 120);
+            const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.5);
+            
+            fetch('http://localhost:8001/eye-track/frame', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: 1, image_base64: base64Data })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.telemetry) {
+                const t = data.telemetry;
+                if (t.attention_state) setTelemetryState(t.attention_state);
+                if (t.metrics) {
+                  setEyeMetrics({
+                    blinkRate: Math.round(t.metrics.blink_rate || 18),
+                    pupilDilation: Math.round(t.metrics.pupil_dilation || 5),
+                    gazeStability: Math.round((t.metrics.gaze_stability || 0.9) * 100)
+                  });
+                }
+              }
+            })
+            .catch(() => {});
+          }, 1500);
+        })
+        .catch(err => {
+          console.warn("Camera access denied or unavailable:", err);
+          setOpticalSensorActive(false);
+        });
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [opticalSensorActive]);
+
   // Initialize questions
   useEffect(() => {
     // Generate placeholder array of 10
@@ -57,6 +121,8 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     fetch(`http://localhost:8001/attempts/start/${bossId}`)
       .then(res => res.json())
       .then(data => {
+        if (data.cognitive_state) setTelemetryState(data.cognitive_state);
+        if (data.predicted_probability) setPredictedRisk(data.predicted_probability);
         if (data.next_question && data.next_question.question) {
           const charCode = data.next_question.correct_answer ? data.next_question.correct_answer.charCodeAt(0) : 65;
           const correctIndex = charCode - 65;
@@ -170,12 +236,15 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
       body: JSON.stringify({
         score: correct ? 10 : 0,
         timeTaken: timeSpent,
-        hintUsed: showHint
+        hintUsed: showHint,
+        bossId: bossId
       }),
     })
     .then(res => res.json())
     .then(data => {
       console.log("AI Backend Response:", data);
+      if (data.cognitive_state) setTelemetryState(data.cognitive_state);
+      if (data.predicted_probability) setPredictedRisk(data.predicted_probability);
       if (data.next_question && data.next_question.question) {
         // Map "A" -> 0, "B" -> 1
         const charCode = data.next_question.correct_answer ? data.next_question.correct_answer.charCodeAt(0) : 65;
@@ -538,6 +607,49 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
       {/* Main Combat Area */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-2 min-h-0 w-full">
         
+        {/* Hidden Camera Elements for Eye Tracker Stream */}
+        <video ref={videoRef} playsInline muted className="hidden" />
+        <canvas ref={canvasRef} width="160" height="120" className="hidden" />
+
+        {/* Suit Optical Sensor & Knowledge Tracing HUD Bar */}
+        <div className="w-full max-w-3xl flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 mb-2 rounded-xl bg-black/60 border border-white/10 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setOpticalSensorActive(!opticalSensorActive)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-mono font-bold tracking-wider border transition-all ${
+                opticalSensorActive
+                  ? 'bg-hero-600/30 border-hero-500 text-hero-300 shadow-[0_0_15px_rgba(220,38,38,0.4)]'
+                  : 'bg-white/5 border-white/20 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5" />
+              {opticalSensorActive ? 'OPTICS: LIVE STREAM' : 'ENABLE EYE SENSOR'}
+            </button>
+
+            {/* Cognitive State Pill */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border uppercase ${
+              telemetryState === 'Focused'
+                ? 'border-green-500/50 bg-green-950/60 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
+                : telemetryState === 'Drifting'
+                ? 'border-yellow-500/50 bg-yellow-950/60 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.3)]'
+                : telemetryState === 'Impulsive'
+                ? 'border-red-500/50 bg-red-950/60 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                : 'border-purple-500/50 bg-purple-950/60 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.3)]'
+            }`}>
+              <Activity className="w-3 h-3 animate-pulse" />
+              <span>COGNITION: {telemetryState}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-[10px] sm:text-xs font-mono text-slate-400">
+            <div>Blink: <span className="text-white font-bold">{eyeMetrics.blinkRate}/m</span></div>
+            <div>Gaze: <span className="text-white font-bold">{eyeMetrics.gazeStability}%</span></div>
+            <div className="hidden sm:block border-l border-white/10 pl-3">
+              AI Risk Predictor: <span className="text-yellow-400 font-bold">{Math.round(predictedRisk * 100)}%</span>
+            </div>
+          </div>
+        </div>
+
         {/* Holographic Question Panel */}
         <div className="w-full max-w-3xl relative mt-2">
           

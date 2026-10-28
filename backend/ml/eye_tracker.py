@@ -22,6 +22,7 @@ Public API
     thread.stop()
 """
 
+import os
 import queue
 import threading
 import time
@@ -31,6 +32,10 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import numpy as np
+
+# Ensure writable cache directories
+os.environ.setdefault("KERAS_HOME", os.path.join(os.path.dirname(__file__), "..", ".keras"))
+os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.path.dirname(__file__), "..", ".matplotlib"))
 
 # ─────────────────────────────────────────────────────────────
 # MediaPipe landmark indices
@@ -163,25 +168,60 @@ class EyeTracker:
     """
 
     def __init__(self, model_path: str, window_size: int = 30):
-        from mediapipe.tasks.python.core.base_options import BaseOptions
-        from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
-            VisionTaskRunningMode,
-        )
-        from mediapipe.tasks.python.vision.face_landmarker import (
-            FaceLandmarker,
-            FaceLandmarkerOptions,
-        )
+        self._landmarker = None
+        self._use_cv_engine = False
+        
+        try:
+            # Patch mediapipe C bindings on Windows Python 3.13 if necessary
+            try:
+                import mediapipe.tasks.python.core.mediapipe_c_bindings as mp_c
+                import ctypes
+                orig_load = mp_c.load_raw_library
+                def _safe_load_raw_lib(signatures=()):
+                    try:
+                        return orig_load(signatures)
+                    except AttributeError:
+                        p = mp_c.resources.files('mediapipe.tasks.c') / 'libmediapipe.dll'
+                        lib = ctypes.CDLL(str(p))
+                        lib.free = ctypes.cdll.msvcrt.free
+                        for s in signatures:
+                            f = getattr(lib, s.func_name)
+                            f.argtypes = s.argtypes
+                            f.restype = s.restype
+                        lib.free.argtypes = [ctypes.c_void_p]
+                        lib.free.restype = None
+                        return lib
+                mp_c.load_raw_library = _safe_load_raw_lib
+            except Exception:
+                pass
 
-        self._landmarker = FaceLandmarker.create_from_options(
-            FaceLandmarkerOptions(
-                base_options=BaseOptions(model_asset_path=model_path),
-                running_mode=VisionTaskRunningMode.IMAGE,
-                num_faces=1,
-                min_face_detection_confidence=0.5,
-                min_face_presence_confidence=0.5,
-                min_tracking_confidence=0.5,
+            from mediapipe.tasks.python.core.base_options import BaseOptions
+            from mediapipe.tasks.python.vision.core.vision_task_running_mode import (
+                VisionTaskRunningMode,
             )
-        )
+            from mediapipe.tasks.python.vision.face_landmarker import (
+                FaceLandmarker,
+                FaceLandmarkerOptions,
+            )
+
+            self._landmarker = FaceLandmarker.create_from_options(
+                FaceLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=model_path),
+                    running_mode=VisionTaskRunningMode.IMAGE,
+                    num_faces=1,
+                    min_face_detection_confidence=0.5,
+                    min_face_presence_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                )
+            )
+            print("[EyeTracker] MediaPipe FaceLandmarker engine initialized.")
+        except Exception as e:
+            print(f"[EyeTracker] MediaPipe engine fallback: {e}")
+            self._use_cv_engine = True
+            import cv2
+            self._face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            self._eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+            print("[EyeTracker] OpenCV Cascade Vision engine initialized.")
 
         W = window_size
         self._W          = W
@@ -219,6 +259,66 @@ class EyeTracker:
         self._frame += 1
         h, w = bgr_frame.shape[:2]
 
+        # ── OpenCV Cascade Vision Engine (Fallback / Headless) ──
+        if self._use_cv_engine or not self._landmarker:
+            gray = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2GRAY)
+            faces = self._face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=4, minSize=(60, 60))
+            if len(faces) == 0:
+                return self._make_result({})
+            fx, fy, fw, fh = faces[0]
+            face_roi_gray = gray[fy:fy+fh, fx:fx+fw]
+            eyes = self._eye_cascade.detectMultiScale(face_roi_gray, scaleFactor=1.1, minNeighbors=3, minSize=(15, 15))
+            
+            if len(eyes) >= 2:
+                eyes = sorted(eyes, key=lambda e: e[0])
+                e1, e2 = eyes[0], eyes[1]
+                gx = fx + (e1[0] + e2[0] + e2[2]) / 2.0
+                gy = fy + (e1[1] + e2[1] + e1[3]) / 2.0
+                avg_ear = 0.28
+                self._consec = 0
+                self._blink_win.append(0)
+                diam = (e1[2] + e2[2]) / 2.0
+                iod = abs((fx + e2[0]) - (fx + e1[0])) or 1.0
+                normalized_diam = (diam / iod) * 50.0
+            elif len(eyes) == 1:
+                gx = fx + eyes[0][0] + eyes[0][2]/2.0
+                gy = fy + eyes[0][1] + eyes[0][3]/2.0
+                avg_ear = 0.18
+                self._consec += 1
+                if self._consec >= 2:
+                    self._blinks += 1
+                    self._blink_win.append(1)
+                else:
+                    self._blink_win.append(0)
+                normalized_diam = 25.0
+            else:
+                gx, gy = fx + fw/2.0, fy + fh/2.0
+                avg_ear = 0.12
+                self._consec += 1
+                self._blink_win.append(1 if self._consec >= 2 else 0)
+                normalized_diam = 20.0
+
+            self._gaze_buf.append((gx, gy))
+            self._pupil_buf.append(normalized_diam)
+            if self._baseline is None and len(self._pupil_buf) >= 5:
+                self._baseline = float(np.mean(self._pupil_buf))
+            
+            if self._last_pos is not None:
+                movement = float(np.linalg.norm(np.array([gx, gy]) - np.array(self._last_pos)))
+                if movement > 25:
+                    self._sacc_buf.append(time.time())
+                    if self._fix_start is not None:
+                        self._fix_buf.append((time.time() - self._fix_start) * 1000)
+                        self._fix_start = None
+                elif self._fix_start is None:
+                    self._fix_start = time.time()
+            self._last_pos = (gx, gy)
+            metrics = self._compute_metrics(w, h)
+            if self._frame >= 5:
+                self._state, self._conf = self._classify(metrics)
+            return self._make_result(metrics, avg_ear)
+
+        # ── MediaPipe FaceLandmarker Engine ──
         rgb      = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
         mp_img   = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result   = self._landmarker.detect(mp_img)
