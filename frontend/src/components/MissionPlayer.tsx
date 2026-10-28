@@ -76,8 +76,8 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
             if (!videoRef.current || !canvasRef.current) return;
             const ctx = canvasRef.current.getContext('2d');
             if (!ctx) return;
-            ctx.drawImage(videoRef.current, 0, 0, 160, 120);
-            const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.5);
+            ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+            const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.8);
             
             fetch('http://localhost:8001/eye-track/frame', {
               method: 'POST',
@@ -86,20 +86,25 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
             })
             .then(res => res.json())
             .then(data => {
-              if (data && data.telemetry) {
-                const t = data.telemetry;
-                if (t.attention_state) setTelemetryState(t.attention_state);
-                if (t.metrics) {
-                  setEyeMetrics({
-                    blinkRate: Math.round(t.metrics.blink_rate || 18),
-                    pupilDilation: Math.round(t.metrics.pupil_dilation || 5),
-                    gazeStability: Math.round((t.metrics.gaze_stability || 0.9) * 100)
-                  });
+              if (data) {
+                if (data.predicted_probability !== undefined) {
+                  setPredictedRisk(data.predicted_probability);
+                }
+                if (data.telemetry) {
+                  const t = data.telemetry;
+                  if (t.attention_state) setTelemetryState(t.attention_state);
+                  if (t.metrics) {
+                    setEyeMetrics({
+                      blinkRate: Math.round(t.metrics.blink_rate !== undefined ? t.metrics.blink_rate : 18),
+                      pupilDilation: Math.round(t.metrics.pupil_dilation !== undefined ? t.metrics.pupil_dilation : 5),
+                      gazeStability: Math.round((t.metrics.gaze_stability !== undefined ? t.metrics.gaze_stability : 0.9) * 100)
+                    });
+                  }
                 }
               }
             })
             .catch(() => {});
-          }, 1500);
+          }, 1200);
         })
         .catch(err => {
           console.warn("Camera access denied or unavailable:", err);
@@ -121,7 +126,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     setQuestions(generateQuestions(bossId, 10));
     
     // Fetch the very first question from AI
-    fetch(`http://localhost:8001/attempts/start/${bossId}`)
+    fetch(`http://localhost:8001/attempts/start/${bossId}?user_id=${currentUserId}`)
       .then(res => res.json())
       .then(data => {
         if (data.cognitive_state) setTelemetryState(data.cognitive_state);
@@ -612,7 +617,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
         
         {/* Hidden Camera Elements for Eye Tracker Stream */}
         <video ref={videoRef} playsInline muted className="hidden" />
-        <canvas ref={canvasRef} width="160" height="120" className="hidden" />
+        <canvas ref={canvasRef} width="320" height="240" className="hidden" />
 
         {/* Suit Optical Sensor & Knowledge Tracing HUD Bar */}
         <div className="w-full max-w-3xl flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 mb-2 rounded-xl bg-black/60 border border-white/10 backdrop-blur-md">

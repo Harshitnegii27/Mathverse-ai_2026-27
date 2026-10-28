@@ -121,6 +121,7 @@ def process_client_frame(payload: FramePayload):
     """
     Receives base64 image frame from browser webcam,
     runs facial landmark & iris tracking, and updates cognitive state.
+    Computes real-time LSTM risk prediction based on rolling attention sequence.
     """
     try:
         session = get_or_create_session(payload.user_id)
@@ -136,17 +137,27 @@ def process_client_frame(payload: FramePayload):
             raise HTTPException(status_code=400, detail="Invalid image encoding")
             
         result = session.update_with_frame(frame)
+        
+        # Live LSTM inference on user's rolling attention records
+        from ml.attention_model import predict_risk
+        lstm_prob = predict_risk(session.history)
+        
         return {
             "success": True,
             "user_id": payload.user_id,
-            "telemetry": result
+            "telemetry": result,
+            "predicted_probability": round(float(lstm_prob), 3)
         }
     except Exception as e:
         print(f"[EyeTrackRouter] Frame processing error: {e}")
+        from ml.attention_model import predict_risk
+        hist = session.history if 'session' in locals() else []
+        lstm_prob = predict_risk(hist) if hist else 0.70
         return {
             "success": False,
             "error": str(e),
-            "telemetry": get_user_latest_telemetry(payload.user_id)
+            "telemetry": get_user_latest_telemetry(payload.user_id),
+            "predicted_probability": round(float(lstm_prob), 3)
         }
 
 @router.get("/status/{user_id}")
