@@ -3,6 +3,7 @@ import { Zap, CheckCircle2, ShieldAlert, Cpu, AlertTriangle, Clock, Camera, Eye,
 import Reveal from '@/components/Reveal';
 import { generateQuestions, Question } from '@/lib/QuestionGenerator';
 import { useGameState } from '@/hooks/useGameState';
+import { useAuth } from '@/context/AuthContext';
 
 interface MissionPlayerProps {
   bossId: string;
@@ -12,6 +13,8 @@ interface MissionPlayerProps {
 
 export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPlayerProps) {
   const { addSpiderPoints, unlockBoss, incrementMissions } = useGameState();
+  const { user } = useAuth();
+  const currentUserId = user?.userId || 1;
   
   const [phase, setPhase] = useState<'briefing' | 'combat' | 'victory' | 'defeat'>('combat');
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -79,7 +82,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
             fetch('http://localhost:8001/eye-track/frame', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ user_id: 1, image_base64: base64Data })
+              body: JSON.stringify({ user_id: currentUserId, image_base64: base64Data })
             })
             .then(res => res.json())
             .then(data => {
@@ -228,7 +231,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     setIsCorrect(correct);
 
     // AI BACKEND INTEGRATION: Submit attempt
-    fetch('http://localhost:8001/attempts/?user_id=1', {
+    fetch(`http://localhost:8001/attempts/?user_id=${currentUserId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

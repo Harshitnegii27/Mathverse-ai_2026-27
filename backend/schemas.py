@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -6,17 +6,17 @@ from datetime import datetime
 class UserBase(BaseModel):
     name: str
     role: str = "student" # student, teacher, parent
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 class UserRegister(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     password: str
     role: str = "student"
     student_code: Optional[str] = None # For parents/teachers linking a student on sign-up
 
 class UserLogin(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 class UserCreate(UserBase):

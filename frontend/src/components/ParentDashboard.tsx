@@ -66,7 +66,7 @@ interface StudentReport {
 }
 
 export default function ParentDashboard({ setView }: { setView: (view: string) => void }) {
-  const { user, linkStudent } = useAuth();
+  const { user, token, linkStudent } = useAuth();
   
   const [childId, setChildId] = useState<number>(user?.linked_student_id || 1);
   const [report, setReport] = useState<StudentReport | null>(null);
@@ -80,7 +80,11 @@ export default function ParentDashboard({ setView }: { setView: (view: string) =
 
   const fetchStudentReport = (id: number) => {
     setLoading(true);
-    fetch(`http://localhost:8001/reports/student/${id}`)
+    fetch(`http://localhost:8001/reports/student/${id}`, {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
       .then(res => {
         if (!res.ok) throw new Error("Failed to fetch report");
         return res.json();

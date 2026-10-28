@@ -22,11 +22,23 @@ DEFAULT_TOPICS = [
 ]
 
 @router.get("/student/{student_id}", response_model=schemas.StudentAnalyticsResponse)
-def get_student_report(student_id: int, db: Session = Depends(get_db)):
+def get_student_report(
+    student_id: int, 
+    current_user: Optional[models.User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     student = db.query(models.User).filter(models.User.userId == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found.")
         
+    # Role-based Ownership & Access Control
+    if current_user:
+        if current_user.role == "student" and current_user.userId != student_id:
+            raise HTTPException(status_code=403, detail="Access denied: Students can only access their own reports.")
+        elif current_user.role in ["parent", "teacher"]:
+            if current_user.linked_student_id is not None and current_user.linked_student_id != student_id:
+                raise HTTPException(status_code=403, detail="Access denied: You are not linked to this student.")
+                
     attempts = db.query(models.MissionAttempt).filter(models.MissionAttempt.userId == student_id).order_by(models.MissionAttempt.timestamp.desc()).all()
     
     total_attempts = len(attempts)
