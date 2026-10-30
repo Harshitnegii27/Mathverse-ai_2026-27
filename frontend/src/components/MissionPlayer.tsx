@@ -18,7 +18,7 @@ const formatOptionText = (opt: string) => {
 
 export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPlayerProps) {
   const { addSpiderPoints, unlockBoss, incrementMissions } = useGameState();
-  const { user } = useAuth();
+  const { user, updateUserPoints } = useAuth();
   const currentUserId = user?.userId || 1;
   
   const [phase, setPhase] = useState<'briefing' | 'combat' | 'victory' | 'defeat'>('combat');
@@ -41,7 +41,8 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
   // Live Optical Sensor & Cognitive Telemetry State
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [opticalSensorActive, setOpticalSensorActive] = useState<boolean>(false);
+  // Auto-requests browser native camera permission prompt immediately on entering mission
+  const [opticalSensorActive, setOpticalSensorActive] = useState<boolean>(true);
   const [telemetryState, setTelemetryState] = useState<string>('Focused');
   const [predictedRisk, setPredictedRisk] = useState<number>(0.68);
   const [eyeMetrics, setEyeMetrics] = useState({ blinkRate: 18, pupilDilation: 5, gazeStability: 92 });
@@ -275,8 +276,9 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
       }
       
       // Save progression locally and on backend
-      const bonusPts = combo * 100 + 250;
+      const bonusPts = 300 + (combo * 50);
       addSpiderPoints(bonusPts);
+      if (updateUserPoints) updateUserPoints(bonusPts);
       incrementMissions();
       if (bossId === 'goblin') unlockBoss('doc-ock');
       if (bossId === 'doc-ock') unlockBoss('mysterio');
@@ -297,14 +299,29 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     const correct = index === questions[currentQuestion].correct;
     setIsCorrect(correct);
 
-    // AI BACKEND INTEGRATION: Submit attempt
+    // Dynamic Reward Calculation:
+    // Base Web-Strike points: 50 on correct, 5 effort resilience XP on mistake
+    // Combo Bonus: +15 points per active combo streak
+    // Speed Bonus: +20 points if answered within 15 seconds
+    const speedBonus = (correct && timeSpent <= 15) ? 20 : 0;
+    const comboBonus = correct ? combo * 15 : 0;
+    const questionPoints = correct ? (50 + comboBonus + speedBonus) : 5;
+
+    // Immediately save points to local game state and user session
+    // This guarantees points & progress are persisted immediately even if player exits after 1 or 2 questions!
+    addSpiderPoints(questionPoints);
+    if (updateUserPoints) {
+      updateUserPoints(questionPoints);
+    }
+
+    // AI BACKEND INTEGRATION: Submit attempt immediately to SQLite database
     fetch(`http://localhost:8001/attempts/?user_id=${currentUserId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        score: correct ? 10 : 0,
+        score: questionPoints,
         timeTaken: timeSpent,
         hintUsed: showHint,
         bossId: bossId
@@ -352,7 +369,10 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
         drottoloosingAudioRef.current.play().catch(console.error);
       }
       setCombatFeedback('strike');
-      setFeedbackText(SUCCESS_DIALOGUES[Math.floor(Math.random() * SUCCESS_DIALOGUES.length)]);
+      const bannerMsg = comboBonus > 0 
+        ? `+${questionPoints} COMBO STRIKE! (${combo + 1}x STREAK)` 
+        : `+${questionPoints} WEB STRIKE!`;
+      setFeedbackText(bannerMsg);
       setCombo(c => c + 1);
     } else {
       if (bossId === 'doc-ock') {
@@ -367,7 +387,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
         }
       }
       setCombatFeedback('counter');
-      setFeedbackText(FAILURE_DIALOGUES[Math.floor(Math.random() * FAILURE_DIALOGUES.length)]);
+      setFeedbackText(`+5 SPIDER RESILIENCE XP (TRY AGAIN!)`);
       setCombo(0);
     }
 
@@ -697,7 +717,7 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
               }`}
             >
               <Camera className="w-3.5 h-3.5" />
-              {opticalSensorActive ? 'OPTICS: LIVE STREAM' : 'ENABLE EYE SENSOR'}
+              {opticalSensorActive ? 'OPTICS: LIVE' : 'OPTICS: OFF (CLICK TO RETRY)'}
             </button>
 
             {/* Cognitive State Pill (Clickable for Interactive Simulation & Testing) */}

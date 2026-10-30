@@ -20,6 +20,7 @@ interface AuthContextType {
   demoLogin: (role: 'student' | 'parent' | 'teacher') => Promise<User>;
   logout: () => void;
   linkStudent: (studentEmailOrCode: string) => Promise<void>;
+  updateUserPoints: (additionalPoints: number) => void;
   isAuthModalOpen: boolean;
   openAuthModal: () => void;
   closeAuthModal: () => void;
@@ -160,6 +161,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUserPoints = (additionalPoints: number) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, points: Math.max(0, (prev.points || 0) + additionalPoints) };
+      localStorage.setItem('mathverse_user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -171,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         demoLogin,
         logout,
         linkStudent,
+        updateUserPoints,
         isAuthModalOpen,
         openAuthModal: () => setIsAuthModalOpen(true),
         closeAuthModal: () => setIsAuthModalOpen(false),

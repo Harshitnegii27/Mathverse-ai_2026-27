@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Shield, User as UserIcon, GraduationCap, Lock, Mail, UserPlus, LogIn, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Shield, User as UserIcon, GraduationCap, Lock, Mail, UserPlus, LogIn, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 interface AuthModalProps {
@@ -9,7 +9,7 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
-  const { login, register, demoLogin } = useAuth();
+  const { login, register } = useAuth();
   
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<'student' | 'parent' | 'teacher'>('student');
@@ -46,20 +46,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoClick = async (demoRole: 'student' | 'parent' | 'teacher') => {
-    setError(null);
-    setLoading(true);
-    try {
-      const u = await demoLogin(demoRole);
-      onSuccess(u.role);
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed');
     } finally {
       setLoading(false);
     }
@@ -137,40 +123,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           </button>
         </div>
 
-        {/* Quick 1-Click Demo Buttons */}
-        <div className="relative z-10 mb-6 bg-ink-900/50 border border-white/5 rounded-2xl p-3">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400 mb-2 font-bold uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-400" /> Quick 1-Click Demo Logins:
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleDemoClick('student')}
-              className="py-1.5 px-2 rounded-xl bg-hero-950/60 border border-hero-600/40 hover:bg-hero-600/30 text-[11px] font-semibold text-hero-300 transition-colors text-center"
-            >
-              🕷️ Peter (Student)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoClick('parent')}
-              className="py-1.5 px-2 rounded-xl bg-blue-950/60 border border-blue-600/40 hover:bg-blue-600/30 text-[11px] font-semibold text-blue-300 transition-colors text-center"
-            >
-              🛡️ May (Parent)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoClick('teacher')}
-              className="py-1.5 px-2 rounded-xl bg-purple-950/60 border border-purple-600/40 hover:bg-purple-600/30 text-[11px] font-semibold text-purple-300 transition-colors text-center"
-            >
-              🔬 Connors (Teacher)
-            </button>
-          </div>
-        </div>
-
-        {/* Error Alert */}
+        {/* Error Alert / Sign-Up Prompt */}
         {error && (
-          <div className="relative z-10 mb-4 p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-300 text-xs font-mono">
-            {error}
+          <div className="relative z-10 mb-4 p-3.5 rounded-2xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs font-mono flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+            <div className="flex-1">
+              <div>{error}</div>
+              {error.toLowerCase().includes('sign up') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('register');
+                    setError(null);
+                  }}
+                  className="inline-flex items-center gap-1 mt-2 px-3 py-1 bg-hero-600 hover:bg-hero-500 text-white font-bold rounded-lg text-xs transition-colors"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> Switch to Sign Up
+                </button>
+              )}
+            </div>
           </div>
         )}
 

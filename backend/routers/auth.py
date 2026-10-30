@@ -88,10 +88,15 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
 @router.post("/login", response_model=schemas.TokenResponse)
 def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email.lower().strip()).first()
-    if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email. Please sign up to create your account!"
+        )
+    if not user.password_hash or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
+            detail="Incorrect password. Please verify and try again."
         )
         
     token = create_access_token({
@@ -115,10 +120,47 @@ def demo_login(role: str, db: Session = Depends(get_db)):
     role_normalized = role.lower().strip()
     user = db.query(models.User).filter(models.User.role == role_normalized).first()
     if not user:
-        # Fallback to any user
-        user = db.query(models.User).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="No accounts seeded. Run seed script first.")
+        # Auto-create demo user on-demand if database is currently empty
+        demo_names = {
+            "student": ("Peter Parker", "peter@mathverse.edu", 3, 850),
+            "parent": ("Aunt May", "may@mathverse.edu", 1, 0),
+            "teacher": ("Prof. Curt Connors", "connors@mathverse.edu", 1, 0)
+        }
+        name, email, level, points = demo_names.get(role_normalized, ("Hero User", f"{role_normalized}@mathverse.edu", 1, 0))
+        
+        # Link to first student if parent/teacher
+        linked_id = None
+        if role_normalized in ["parent", "teacher"]:
+            st = db.query(models.User).filter(models.User.role == "student").first()
+            if not st:
+                # create student first
+                st = models.User(
+                    name="Peter Parker",
+                    email="peter@mathverse.edu",
+                    password_hash=hash_password("password123"),
+                    role="student",
+                    points=850,
+                    level=3,
+                    student_code="SPIDER-2026"
+                )
+                db.add(st)
+                db.commit()
+                db.refresh(st)
+            linked_id = st.userId
+            
+        user = models.User(
+            name=name,
+            email=email,
+            password_hash=hash_password("password123"),
+            role=role_normalized,
+            points=points,
+            level=level,
+            student_code="SPIDER-2026" if role_normalized == "student" else None,
+            linked_student_id=linked_id
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
             
     token = create_access_token({
         "sub": user.email or f"{role_normalized}@mathverse.edu",

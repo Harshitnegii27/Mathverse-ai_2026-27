@@ -151,7 +151,16 @@ def submit_attempt(attempt: schemas.MissionAttemptCreate, user_id: int = 1, db: 
     db.add(db_attempt)
     
     user = db.query(models.User).filter(models.User.userId == user_id).first()
-    if user and attempt.score > 0:
+    if not user:
+        user = models.User(
+            userId=user_id,
+            name="Spider-Cadet",
+            role="student",
+            points=max(0, attempt.score),
+            level=1
+        )
+        db.add(user)
+    elif attempt.score > 0:
         user.points = (user.points or 0) + attempt.score
 
     # Dynamically update Topic Mastery for this student

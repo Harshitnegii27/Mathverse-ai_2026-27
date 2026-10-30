@@ -19,28 +19,24 @@ export function useGameState() {
   const { user } = useAuth();
 
   const [gameState, setGameState] = useState<GameState>(() => {
-    if (!user) {
-      return DEFAULT_STATE;
-    }
-    const saved = localStorage.getItem(`mathverse_state_user_${user.userId}`);
+    const storageKey = user ? `mathverse_state_user_${user.userId}` : 'mathverse_state_guest';
+    const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Level 1 = ['goblin'] only; Level 2 = ['goblin', 'doc-ock'], etc.
-        const userLevel = Math.max(1, user.level || 1);
+        const userLevel = user ? Math.max(1, user.level || 1) : 1;
         const levelUnlocked = BOSS_KEYS.slice(0, userLevel);
         return {
-          spiderPoints: user.points !== undefined ? user.points : (parsed.spiderPoints || 0),
-          unlockedBosses: levelUnlocked,
+          spiderPoints: (user && user.points !== undefined) ? user.points : (parsed.spiderPoints || 0),
+          unlockedBosses: parsed.unlockedBosses || levelUnlocked,
           missionsCompleted: parsed.missionsCompleted || 0,
         };
       } catch (e) {
         return DEFAULT_STATE;
       }
     }
-    // New signup: user.level is 1 -> ONLY ['goblin']
     return {
-      spiderPoints: user.points || 0,
+      spiderPoints: user?.points || 0,
       unlockedBosses: ['goblin'],
       missionsCompleted: 0,
     };
@@ -49,6 +45,13 @@ export function useGameState() {
   // Keep state perfectly synchronized with current logged-in user
   useEffect(() => {
     if (!user) {
+      const savedGuest = localStorage.getItem('mathverse_state_guest');
+      if (savedGuest) {
+        try {
+          setGameState(JSON.parse(savedGuest));
+          return;
+        } catch (e) {}
+      }
       setGameState(DEFAULT_STATE);
       return;
     }
@@ -66,7 +69,6 @@ export function useGameState() {
         return;
       } catch (e) {}
     }
-    // Brand new user after signup: level 1 -> ONLY ['goblin']
     setGameState({
       spiderPoints: user.points || 0,
       unlockedBosses: levelUnlocked,
@@ -75,9 +77,8 @@ export function useGameState() {
   }, [user?.userId, user?.level, user?.points]);
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem(`mathverse_state_user_${user.userId}`, JSON.stringify(gameState));
-    }
+    const storageKey = user ? `mathverse_state_user_${user.userId}` : 'mathverse_state_guest';
+    localStorage.setItem(storageKey, JSON.stringify(gameState));
   }, [gameState, user]);
 
   const addSpiderPoints = (points: number) => {
