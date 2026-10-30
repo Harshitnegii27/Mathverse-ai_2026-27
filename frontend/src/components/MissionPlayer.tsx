@@ -18,7 +18,7 @@ const formatOptionText = (opt: string) => {
 
 export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPlayerProps) {
   const { addSpiderPoints, unlockBoss, incrementMissions } = useGameState();
-  const { user, updateUserPoints } = useAuth();
+  const { user, token, updateUserPoints } = useAuth();
   const currentUserId = user?.userId || 1;
   
   const [phase, setPhase] = useState<'briefing' | 'combat' | 'victory' | 'defeat'>('combat');
@@ -73,7 +73,10 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
     
     fetch('http://localhost:8001/eye-track/simulate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({ user_id: currentUserId, state: nextState })
     })
     .then(res => res.json())
@@ -120,7 +123,10 @@ export default function MissionPlayer({ bossId, onExit, onNextLevel }: MissionPl
             
             fetch('http://localhost:8001/eye-track/frame', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              },
               body: JSON.stringify({ user_id: currentUserId, image_base64: base64Data })
             })
             .then(res => res.json())
